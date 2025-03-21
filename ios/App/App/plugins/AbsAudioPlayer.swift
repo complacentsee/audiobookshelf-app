@@ -125,6 +125,15 @@ public class AbsAudioPlayer: CAPPlugin {
             settings.playbackRate = playbackRate
         }
         PlayerHandler.setPlaybackSpeed(speed: settings.playbackRate)
+      
+        // Force frontend to update sleep timer UI, but only if paused and a sleep timer is set
+        if PlayerHandler.paused, let sleepRemaining = PlayerHandler.getSleepTimeRemaining() {
+            logger.log("Playback speed updated while paused and sleep timer was set. Updating UI")
+            self.notifyListeners("onSleepTimerSet", data: [
+                "value": sleepRemaining
+            ])
+        }
+
         call.resolve()
     }
 
