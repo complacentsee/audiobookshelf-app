@@ -629,6 +629,37 @@ class ApiClient {
         }
     }
     
+    // MARK: - Library browsing
+    //
+    // CarPlay renders its own native templates and cannot reach the webview, so it needs
+    // to browse the library from Swift. These mirror the endpoints the Android Auto
+    // MediaManager uses. Response types live in CarPlay/CarPlayAPIModels.swift.
+
+    public static func getLibraries(callback: @escaping ([CarPlayLibrary]) -> Void) {
+        getResourceWithTokenRefresh(endpoint: "api/libraries", decodable: LibrariesResponse.self) { response in
+            callback(response?.libraries ?? [])
+        }
+    }
+
+    public static func getLibraryItems(libraryId: String, limit: Int, page: Int, callback: @escaping (LibraryItemsResponse?) -> Void) {
+        let endpoint = "api/libraries/\(libraryId)/items?limit=\(limit)&page=\(page)&sort=media.metadata.title&minified=1"
+        getResourceWithTokenRefresh(endpoint: endpoint, decodable: LibraryItemsResponse.self) { response in
+            callback(response)
+        }
+    }
+
+    public static func getItemsInProgress(callback: @escaping ([ItemInProgress]?) -> Void) {
+        getResourceWithTokenRefresh(endpoint: "api/me/items-in-progress", decodable: ItemsInProgressResponse.self) { response in
+            callback(response?.libraryItems)
+        }
+    }
+
+    public static func getUserMediaProgress(callback: @escaping ([MediaProgress]) -> Void) {
+        getResourceWithTokenRefresh(endpoint: "api/me", decodable: User.self) { user in
+            callback(user.map { Array($0.mediaProgress) } ?? [])
+        }
+    }
+
     public static func pingServer() async -> Bool {
         var status = true
         AF.request("\(Store.serverConfig!.address)/ping", method: .get).responseDecodable(of: PingResponsePayload.self) { response in

@@ -9,6 +9,11 @@ import Foundation
 import RealmSwift
 
 class Store {
+    /// Posted whenever the active server connection changes. CarPlay observes this so its
+    /// templates can reload after the phone app logs in or switches servers -- it has no
+    /// webview to drive it and would otherwise show a stale or empty library.
+    static let serverConfigDidChange = Notification.Name("Store.serverConfigDidChange")
+
     public static var serverConfig: ServerConnectionConfig? {
         get {
             do {
@@ -27,6 +32,7 @@ class Store {
             } else {
                 Database.shared.setLastActiveConfigIndexToNil()
             }
+            NotificationCenter.default.post(name: Store.serverConfigDidChange, object: nil)
         }
     }
     
