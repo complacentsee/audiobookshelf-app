@@ -14,4 +14,10 @@ enum PlayerEvents: String {
     case sleepEnded = "com.audiobookshelf.app.player.sleep.ended"
     case failed = "com.audiobookshelf.app.player.failed"
     case localProgress = "com.audiobookshelf.app.player.localProgress"
+    /// Playback was started natively rather than by the webview -- currently only by CarPlay.
+    /// The webview drives its own UI off the events AbsAudioPlayer emits in startPlaybackSession,
+    /// so without this it never learns a session began: the player footer stays closed and the
+    /// phone app cannot pause or stop what it does not know is playing.
+    /// userInfo: ["sessionId": String]
+    case externalSessionStarted = "com.audiobookshelf.app.player.externalSessionStarted"
 }

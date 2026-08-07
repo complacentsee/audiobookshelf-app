@@ -572,11 +572,21 @@ class ApiClient {
             if (!playbackSessions.isEmpty) {
                 let success = await ApiClient.reportAllLocalPlaybackSessions(playbackSessions)
                 if (success) {
+                    // Never delete the session the player is actively using. The first-sync
+                    // cleanup below assumes any session in the db predates this launch -- true
+                    // when the webview must exist before playback can start, but CarPlay can
+                    // start playback before the webview ever mounts. Deleting the live session
+                    // leaves the running player with a dangling sessionId: every subsequent
+                    // metadata/time read returns nil and the UI clock collapses to 0:00.
+                    let liveSessionId = PlayerHandler.getPlaybackSession()?.id
+
                     // Remove sessions from db
                     try playbackSessions.forEach { session in
                         AbsLogger.info(message: "syncLocalSessionsWithServer: Handling \(session.displayTitle ?? "") (\(session.id)) \(session.isActiveSession)")
-                        // On first sync then remove all sessions
-                        if (!session.isActiveSession || isFirstSync) {
+                        if (session.id == liveSessionId) {
+                            AbsLogger.info(message: "syncLocalSessionsWithServer: Skipping delete of live session \(session.id)")
+                        } else if (!session.isActiveSession || isFirstSync) {
+                            // On first sync then remove all sessions
                             if let session = session.thaw() {
                                 try session.delete()
                             }

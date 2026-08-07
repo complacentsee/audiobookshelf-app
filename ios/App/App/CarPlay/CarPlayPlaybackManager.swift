@@ -44,6 +44,7 @@ class CarPlayPlaybackManager {
                 try session.save()
                 AbsLogger.info(message: "Session saved, calling startPlayback")
                 PlayerHandler.startPlayback(sessionId: session.id, playWhenReady: true, playbackRate: playbackRate)
+                notifyWebviewOfExternalSession(session.id)
                 scheduleNowPlayingPush()
             } catch {
                 AbsLogger.error(message: "ERROR saving session: \(error)")
@@ -73,10 +74,21 @@ class CarPlayPlaybackManager {
         do {
             try playbackSession.save()
             PlayerHandler.startPlayback(sessionId: playbackSession.id, playWhenReady: true, playbackRate: playbackRate)
+            notifyWebviewOfExternalSession(playbackSession.id)
             scheduleNowPlayingPush()
         } catch {
             AbsLogger.error(message: "CarPlay: Failed to save local playback session: \(error)")
         }
+    }
+
+    /// CarPlay bypasses AbsAudioPlayer, so the webview never hears about the session it started.
+    /// Without this the phone app's player footer stays closed and cannot stop the playback.
+    private static func notifyWebviewOfExternalSession(_ sessionId: String) {
+        NotificationCenter.default.post(
+            name: NSNotification.Name(PlayerEvents.externalSessionStarted.rawValue),
+            object: nil,
+            userInfo: ["sessionId": sessionId]
+        )
     }
 
     // MARK: - Now Playing Push

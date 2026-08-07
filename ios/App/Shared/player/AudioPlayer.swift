@@ -135,22 +135,32 @@ class AudioPlayer: NSObject {
         self.queueItemStatusObserver?.invalidate()
     }
     
-    public func destroy() {
+    /// - Parameter keepAudioSessionActive: pass true when another session is about to start
+    ///   immediately. Deactivating the audio session drops the app's Now Playing standing with
+    ///   the system, which leaves CarPlay's transport controls inert and its Now Playing screen
+    ///   stale, because nothing reactivates it -- initAudioSession() only sets the category.
+    public func destroy(keepAudioSessionActive: Bool = false) {
         // Pause is not synchronous causing this error on below lines:
         // AVAudioSession_iOS.mm:1206  Deactivating an audio session that has running I/O. All I/O should be stopped or paused prior to deactivating the audio session
         // It is related to L79 `AVAudioSession.sharedInstance().setActive(false)`
         self.pause()
         self.audioPlayer.replaceCurrentItem(with: nil)
         
-        do {
-            try AVAudioSession.sharedInstance().setActive(false)
-        } catch {
-            AbsLogger.error(message: "Failed to set AVAudioSession inactive", error: error)
+        if !keepAudioSessionActive {
+            do {
+                try AVAudioSession.sharedInstance().setActive(false)
+            } catch {
+                AbsLogger.error(message: "Failed to set AVAudioSession inactive", error: error)
+            }
         }
-        
+
         self.removeAudioSessionNotifications()
-        DispatchQueue.runOnMainQueue {
-            UIApplication.shared.endReceivingRemoteControlEvents()
+        if !keepAudioSessionActive {
+            // Remote control events are claimed for the app's lifetime in AppDelegate so that
+            // CarPlay can attach before any playback starts; only give them up on a real teardown.
+            DispatchQueue.runOnMainQueue {
+                UIApplication.shared.endReceivingRemoteControlEvents()
+            }
         }
         
         // Remove observers
@@ -678,6 +688,7 @@ class AudioPlayer: NSObject {
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.removeTarget(nil)
         commandCenter.playCommand.addTarget { [weak self] event in
+            AbsLogger.info(message: "REMOTECMD playCommand fired")
             guard let strongSelf = self else { return .commandFailed }
             if strongSelf.isPlaying() {
                 strongSelf.pause()
@@ -690,6 +701,7 @@ class AudioPlayer: NSObject {
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.removeTarget(nil)
         commandCenter.pauseCommand.addTarget { [weak self] event in
+            AbsLogger.info(message: "REMOTECMD pauseCommand fired")
             guard let strongSelf = self else { return .commandFailed }
             if strongSelf.isPlaying() {
                 strongSelf.pause()
@@ -702,6 +714,7 @@ class AudioPlayer: NSObject {
         commandCenter.togglePlayPauseCommand.isEnabled = true
         commandCenter.togglePlayPauseCommand.removeTarget(nil)
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] event in
+            AbsLogger.info(message: "REMOTECMD togglePlayPauseCommand fired")
             guard let strongSelf = self else { return .commandFailed }
             if strongSelf.isPlaying() {
                 strongSelf.pause()
@@ -715,6 +728,7 @@ class AudioPlayer: NSObject {
         commandCenter.skipForwardCommand.removeTarget(nil)
         commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: jumpForwardTime)]
         commandCenter.skipForwardCommand.addTarget { [weak self] event in
+            AbsLogger.info(message: "REMOTECMD skipForwardCommand fired")
             guard let command = event.command as? MPSkipIntervalCommand else {
                 return .noSuchContent
             }
@@ -728,6 +742,7 @@ class AudioPlayer: NSObject {
         commandCenter.skipBackwardCommand.removeTarget(nil)
         commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: jumpBackwardsTime)]
         commandCenter.skipBackwardCommand.addTarget { [weak self] event in
+            AbsLogger.info(message: "REMOTECMD skipBackwardCommand fired")
             guard let command = event.command as? MPSkipIntervalCommand else {
                 return .noSuchContent
             }
@@ -760,6 +775,7 @@ class AudioPlayer: NSObject {
         commandCenter.changePlaybackPositionCommand.isEnabled = deviceSettings.allowSeekingOnMediaControls
         commandCenter.changePlaybackPositionCommand.removeTarget(nil)
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+            AbsLogger.info(message: "REMOTECMD changePlaybackPositionCommand fired")
             guard let event = event as? MPChangePlaybackPositionCommandEvent else {
                 return .noSuchContent
             }
@@ -779,6 +795,7 @@ class AudioPlayer: NSObject {
         commandCenter.changePlaybackRateCommand.removeTarget(nil)
         commandCenter.changePlaybackRateCommand.supportedPlaybackRates = [0.5, 0.75, 1.0, 1.25, 1.5, 2]
         commandCenter.changePlaybackRateCommand.addTarget { [weak self] event in
+            AbsLogger.info(message: "REMOTECMD changePlaybackRateCommand fired")
             guard let event = event as? MPChangePlaybackRateCommandEvent else {
                 return .noSuchContent
             }

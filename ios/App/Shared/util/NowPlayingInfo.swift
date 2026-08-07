@@ -83,13 +83,20 @@ class NowPlayingInfo {
                 }
                 
                 MPNowPlayingInfoCenter.default().nowPlayingInfo = self.nowPlayingInfo
+
+                // CPNowPlayingTemplate reads playbackState directly and will not reflect
+                // play/pause or drive its transport controls while it is .unknown, which
+                // is the default. The phone lock screen gets away without this because it
+                // infers state from MPNowPlayingInfoPropertyPlaybackRate; CarPlay does not.
+                MPNowPlayingInfoCenter.default().playbackState = rate > 0 ? .playing : .paused
             }
         }
     }
-    
+
     public func reset() {
         nowPlayingInfo = [:]
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        MPNowPlayingInfoCenter.default().playbackState = .stopped
     }
     
     private func setMetadata(artwork: MPMediaItemArtwork?, metadata: NowPlayingMetadata?) {
