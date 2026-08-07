@@ -720,7 +720,6 @@ class AudioPlayer: NSObject {
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.removeTarget(nil)
         commandCenter.playCommand.addTarget { [weak self] event in
-            AbsLogger.info(message: "REMOTECMD playCommand fired")
             guard let strongSelf = self else { return .commandFailed }
             if strongSelf.isPlaying() {
                 strongSelf.pause()
@@ -733,7 +732,6 @@ class AudioPlayer: NSObject {
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.removeTarget(nil)
         commandCenter.pauseCommand.addTarget { [weak self] event in
-            AbsLogger.info(message: "REMOTECMD pauseCommand fired")
             guard let strongSelf = self else { return .commandFailed }
             if strongSelf.isPlaying() {
                 strongSelf.pause()
@@ -746,7 +744,6 @@ class AudioPlayer: NSObject {
         commandCenter.togglePlayPauseCommand.isEnabled = true
         commandCenter.togglePlayPauseCommand.removeTarget(nil)
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] event in
-            AbsLogger.info(message: "REMOTECMD togglePlayPauseCommand fired")
             guard let strongSelf = self else { return .commandFailed }
             if strongSelf.isPlaying() {
                 strongSelf.pause()
@@ -760,7 +757,6 @@ class AudioPlayer: NSObject {
         commandCenter.skipForwardCommand.removeTarget(nil)
         commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: jumpForwardTime)]
         commandCenter.skipForwardCommand.addTarget { [weak self] event in
-            AbsLogger.info(message: "REMOTECMD skipForwardCommand fired")
             guard let command = event.command as? MPSkipIntervalCommand else {
                 return .noSuchContent
             }
@@ -774,7 +770,6 @@ class AudioPlayer: NSObject {
         commandCenter.skipBackwardCommand.removeTarget(nil)
         commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: jumpBackwardsTime)]
         commandCenter.skipBackwardCommand.addTarget { [weak self] event in
-            AbsLogger.info(message: "REMOTECMD skipBackwardCommand fired")
             guard let command = event.command as? MPSkipIntervalCommand else {
                 return .noSuchContent
             }
@@ -807,7 +802,6 @@ class AudioPlayer: NSObject {
         commandCenter.changePlaybackPositionCommand.isEnabled = deviceSettings.allowSeekingOnMediaControls
         commandCenter.changePlaybackPositionCommand.removeTarget(nil)
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
-            AbsLogger.info(message: "REMOTECMD changePlaybackPositionCommand fired")
             guard let event = event as? MPChangePlaybackPositionCommandEvent else {
                 return .noSuchContent
             }
@@ -827,7 +821,6 @@ class AudioPlayer: NSObject {
         commandCenter.changePlaybackRateCommand.removeTarget(nil)
         commandCenter.changePlaybackRateCommand.supportedPlaybackRates = [0.5, 0.75, 1.0, 1.25, 1.5, 2]
         commandCenter.changePlaybackRateCommand.addTarget { [weak self] event in
-            AbsLogger.info(message: "REMOTECMD changePlaybackRateCommand fired")
             guard let event = event as? MPChangePlaybackRateCommandEvent else {
                 return .noSuchContent
             }
