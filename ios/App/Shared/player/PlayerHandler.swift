@@ -7,6 +7,7 @@
 
 import Foundation
 import RealmSwift
+import AVFoundation
 
 class PlayerHandler {
     private static var player: AudioPlayer?
@@ -14,11 +15,22 @@ class PlayerHandler {
     public static func startPlayback(sessionId: String, playWhenReady: Bool, playbackRate: Float) {
         guard let session = Database.shared.getPlaybackSession(id: sessionId) else { return }
         
-        // Clean up the existing player
-        resetPlayer()
-        
+        // Clean up the existing player. Keep the audio session alive when playback is about to
+        // resume immediately -- tearing it down and never reactivating it costs the app its Now
+        // Playing standing, which is what leaves CarPlay's transport controls dead.
+        resetPlayer(keepAudioSessionActive: playWhenReady)
+
         // Cleanup and sync old sessions
         cleanupOldSessions(currentSessionId: sessionId)
+
+        if playWhenReady {
+            do {
+                try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+                try AVAudioSession.sharedInstance().setActive(true)
+            } catch {
+                AbsLogger.error(message: "PlayerHandler: failed to activate audio session", error: error)
+            }
+        }
         
         // Set now playing info
         NowPlayingInfo.shared.setSessionMetadata(metadata: NowPlayingMetadata(id: session.id, itemId: session.libraryItemId!, title: session.displayTitle ?? "Unknown title", author: session.displayAuthor, series: nil, isLocal: session.isLocal))
@@ -136,6 +148,7 @@ class PlayerHandler {
         guard let player = player else { return nil }
         guard player.isInitialized() else { return nil }
 
+
         return PlaybackMetadata(
             duration: player.getDuration() ?? 0,
             currentTime: player.getCurrentTime() ?? 0,
@@ -168,8 +181,8 @@ class PlayerHandler {
         }
     }
     
-    private static func resetPlayer() {
-        player?.destroy()
+    private static func resetPlayer(keepAudioSessionActive: Bool = false) {
+        player?.destroy(keepAudioSessionActive: keepAudioSessionActive)
         player = nil
     }
 }

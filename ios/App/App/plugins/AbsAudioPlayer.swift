@@ -47,19 +47,54 @@ public class AbsAudioPlayer: CAPPlugin, CAPBridgedPlugin {
         NotificationCenter.default.addObserver(self, selector: #selector(sendSleepTimerEnded), name: NSNotification.Name(PlayerEvents.sleepEnded.rawValue), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(onPlaybackFailed), name: NSNotification.Name(PlayerEvents.failed.rawValue), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(onLocalMediaProgressUpdate), name: NSNotification.Name(PlayerEvents.localProgress.rawValue), object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(onExternalSessionStarted), name: NSNotification.Name(PlayerEvents.externalSessionStarted.rawValue), object: nil)
 
         self.bridge?.webView?.allowsBackForwardNavigationGestures = true;
         self.bridge?.webView?.scrollView.alwaysBounceVertical = false;
 
         setupNetworkMonitor()
+
+        // A CarPlay-first launch runs playback long before any window scene exists -- and this
+        // plugin only comes into existence when the window scene creates the webview. Every
+        // notification posted before that moment (externalSessionStarted, didBecomeActive) was
+        // dispatched to an object that had not been constructed yet. load() is the first point
+        // where the plugin exists, so replay any already-running session here, retained so it
+        // survives until the JS side registers its listeners moments later.
+        if let session = PlayerHandler.getPlaybackSession(), let libraryItemId = session.libraryItemId {
+            AbsLogger.info(message: "load: playback already active (\(session.displayTitle ?? "unknown")) -- queueing retained session replay for webview")
+            do {
+                self.notifyListeners("onPrepareMedia", data: [
+                    "audiobookId": libraryItemId,
+                    "playWhenReady": !PlayerHandler.paused
+                ], retainUntilConsumed: true)
+                self.notifyListeners("onPlaybackSession", data: try session.asDictionary(), retainUntilConsumed: true)
+                // The clock (duration / currentTime / playerState) travels separately via
+                // onMetadata -- without it the player renders at 0:00 / -0:00 until the next
+                // periodic update. Same retention reasoning as above.
+                self.notifyListeners("onPlayingUpdate", data: [ "value": !PlayerHandler.paused ], retainUntilConsumed: true)
+                if let metadata = try? PlayerHandler.getMetdata()?.asDictionary() {
+                    self.notifyListeners("onMetadata", data: metadata, retainUntilConsumed: true)
+                }
+            } catch {
+                AbsLogger.error(message: "load: failed to queue session replay", error: error)
+            }
+        }
     }
 
     deinit {
         monitor?.cancel()
     }
 
+    /// The webview reports it is ready. CarPlay can launch the app with no window scene at all, so
+    /// playback may already be running before a webview has ever existed -- any events emitted then
+    /// went nowhere. didBecomeActive is too early to use instead: it fires before the webview has
+    /// registered its listeners. This is the first moment the UI can actually receive the session.
     @objc func onReady(_ call: CAPPluginCall) {
         // TODO: Was used to notify when Abs UI was ready so that last played media could be opened - this was buggy and removed
+        // Sessions running before the webview exists (e.g. started from CarPlay, which launches the
+        // app with no window scene) are replayed from load() via retained events instead. Do NOT
+        // re-send the session from here: a duplicate onPlaybackSession puts the player back into
+        // its loading state and blanks the clock it just rendered.
         call.resolve()
     }
 
@@ -294,6 +329,33 @@ public class AbsAudioPlayer: CAPPlugin, CAPBridgedPlugin {
             ])
         }
 
+    }
+
+    /// Mirrors the events startPlaybackSession emits, for playback the webview did not initiate.
+    /// CarPlay drives PlayerHandler directly, so this is what opens the phone app's player footer
+    /// and lets it control a session that began in the car.
+    @objc func onExternalSessionStarted(_ notification: Notification) {
+        guard let sessionId = notification.userInfo?["sessionId"] as? String else { return }
+        guard let session = Database.shared.getPlaybackSession(id: sessionId),
+              let libraryItemId = session.libraryItemId else {
+            AbsLogger.error(message: "onExternalSessionStarted: no session for id \(sessionId)")
+            return
+        }
+
+        do {
+            // retainUntilConsumed: CarPlay can start playback before the phone UI exists at all
+            // (CarPlay-first launch has no window scene until the user opens the app). A normal
+            // notifyListeners fires into the void; a retained one is queued by Capacitor and
+            // delivered the moment AudioPlayer.vue registers its listener, however much later.
+            self.notifyListeners("onPrepareMedia", data: [
+                "audiobookId": libraryItemId,
+                "playWhenReady": true
+            ], retainUntilConsumed: true)
+            self.notifyListeners("onPlaybackSession", data: try session.asDictionary(), retainUntilConsumed: true)
+            self.sendMetadata()
+        } catch {
+            AbsLogger.error(message: "onExternalSessionStarted: failed to notify webview", error: error)
+        }
     }
 
     @objc func sendPrepareMetadataEvent(itemId: String, playWhenReady: Bool) {

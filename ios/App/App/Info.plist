@@ -33,8 +33,12 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
+		<!-- Must be true for CarPlay: the app has to run its phone window scene and the CarPlay
+		     template scene at the same time. With this false, iOS connects only one, so a
+		     CarPlay-first launch never creates the window scene and the webview never loads --
+		     the phone UI comes up with no player and cannot control what CarPlay started. -->
 		<key>UIApplicationSupportsMultipleScenes</key>
-		<false/>
+		<true/>
 		<key>UISceneConfigurations</key>
 		<dict>
 			<key>CPTemplateApplicationSceneSessionRoleApplication</key>

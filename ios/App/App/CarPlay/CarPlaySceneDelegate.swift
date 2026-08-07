@@ -8,6 +8,7 @@
 import CarPlay
 import Foundation
 import MediaPlayer
+import AVFoundation
 
 @available(iOS 14.0, *)
 class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
@@ -36,6 +37,12 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         // Register observer FIRST so we never miss serverConfigDidChange notifications
         NotificationCenter.default.addObserver(self, selector: #selector(reloadAllProviders), name: Store.serverConfigDidChange, object: nil)
 
+        // Continue-listening ordering is server state, and it changes whenever anything is played
+        // or stopped -- including from the phone. Without these the CarPlay list keeps whatever
+        // order it had at connect time and silently drifts out of step with the phone app.
+        NotificationCenter.default.addObserver(self, selector: #selector(reloadAllProvidersAfterProgressSync), name: NSNotification.Name(PlayerEvents.externalSessionStarted.rawValue), object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(reloadAllProvidersAfterProgressSync), name: NSNotification.Name(PlayerEvents.closed.rawValue), object: nil)
+
         // Restore server config from Realm before initial reload.
         // On cold start the active config index may be nil even though configs exist.
         restoreServerConfigIfNeeded()
@@ -60,6 +67,10 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             libProvider.template,
             dlProvider.template
         ])
+        // Refresh whenever a tab is selected. Continue-listening ordering lives on the server and
+        // only changes once progress has been reported, so reloading at the moment playback starts
+        // races ahead of the data -- looking at the tab is the point the list must be current.
+        tabBar.delegate = self
 
         interfaceController.setRootTemplate(tabBar, animated: true, completion: nil)
 
@@ -89,7 +100,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         _ templateApplicationScene: CPTemplateApplicationScene,
         didDisconnect interfaceController: CPInterfaceController
     ) {
-        NotificationCenter.default.removeObserver(self, name: Store.serverConfigDidChange, object: nil)
+        NotificationCenter.default.removeObserver(self)
         CPNowPlayingTemplate.shared.remove(self)
         CarPlaySceneDelegate.shared = nil
         self.interfaceController = nil
@@ -98,9 +109,19 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         self.downloadsProvider = nil
     }
 
+    /// Playback start only reaches the continue-listening ordering after the server has been told
+    /// about it, which happens on the first progress report rather than immediately. Reload once
+    /// that has had a chance to land, otherwise the refetch returns the previous order.
+    @objc private func reloadAllProvidersAfterProgressSync() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) { [weak self] in
+            self?.reloadAllProviders()
+        }
+    }
+
     @objc private func reloadAllProviders() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            AbsLogger.info(message: "reloadAllProviders: refetching CarPlay lists")
 
             // If config was cleared mid-session (e.g. by a token refresh failure)
             // but configs still exist in Realm, try to restore once to avoid
@@ -333,7 +354,11 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
         let infoCenter = MPNowPlayingInfoCenter.default()
         let info = infoCenter.nowPlayingInfo
-        AbsLogger.info(message: "pushNowPlaying: hasInfo=\(info != nil) keyCount=\(info?.count ?? 0) playbackState=\(infoCenter.playbackState.rawValue) topTemplate=\(type(of: interfaceController.topTemplate))")
+        // NOTE: type(of:) on the Optional reports the *static* type (Optional<CPTemplate>) and tells
+        // us nothing. Unwrap first so this logs the template actually on screen.
+        let topName = interfaceController.topTemplate.map { String(describing: type(of: $0)) } ?? "nil"
+        let cmd = MPRemoteCommandCenter.shared()
+        AbsLogger.info(message: "pushNowPlaying: hasInfo=\(info != nil) keyCount=\(info?.count ?? 0) playbackState=\(infoCenter.playbackState.rawValue) topTemplate=\(topName) playEnabled=\(cmd.playCommand.isEnabled) pauseEnabled=\(cmd.pauseCommand.isEnabled) skipFwdEnabled=\(cmd.skipForwardCommand.isEnabled) audioSessionOther=\(AVAudioSession.sharedInstance().isOtherAudioPlaying)")
         if let info = info {
             AbsLogger.info(message: "pushNowPlaying info: title=\(info[MPMediaItemPropertyTitle] ?? "NIL") artist=\(info[MPMediaItemPropertyArtist] ?? "NIL") rate=\(info[MPNowPlayingInfoPropertyPlaybackRate] ?? "NIL")")
         }
@@ -354,4 +379,13 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 extension CarPlaySceneDelegate: CPNowPlayingTemplateObserver {
     func nowPlayingTemplateUpNextButtonTapped(_ nowPlayingTemplate: CPNowPlayingTemplate) {}
     func nowPlayingTemplateAlbumArtistButtonTapped(_ nowPlayingTemplate: CPNowPlayingTemplate) {}
+}
+
+// MARK: - CPTabBarTemplateDelegate
+
+extension CarPlaySceneDelegate: CPTabBarTemplateDelegate {
+    func tabBarTemplate(_ tabBarTemplate: CPTabBarTemplate, didSelect selectedTemplate: CPTemplate) {
+        AbsLogger.info(message: "tabBarTemplate didSelect -- refreshing lists")
+        reloadAllProviders()
+    }
 }
