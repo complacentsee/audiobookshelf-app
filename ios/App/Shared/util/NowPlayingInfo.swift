@@ -42,8 +42,19 @@ class NowPlayingInfo {
     }()
     
     private var nowPlayingInfo: [String: Any]
+
+    /// The active MPNowPlayingSession's info center (iOS 16+). CarPlay's CPNowPlayingTemplate
+    /// reads from HERE, not from MPNowPlayingInfoCenter.default(). Everything is written to
+    /// both: the session center for CarPlay, the default center for the lock screen /
+    /// control center fallback and for pre-iOS-16.
+    private var sessionInfoCenter: MPNowPlayingInfoCenter?
+
     private init() {
         self.nowPlayingInfo = [:]
+    }
+
+    public func setInfoCenter(_ center: MPNowPlayingInfoCenter) {
+        self.sessionInfoCenter = center
     }
     
     public func setSessionMetadata(metadata: NowPlayingMetadata) {
@@ -83,12 +94,14 @@ class NowPlayingInfo {
                 }
                 
                 MPNowPlayingInfoCenter.default().nowPlayingInfo = self.nowPlayingInfo
+                self.sessionInfoCenter?.nowPlayingInfo = self.nowPlayingInfo
 
                 // CPNowPlayingTemplate reads playbackState directly and will not reflect
                 // play/pause or drive its transport controls while it is .unknown, which
                 // is the default. The phone lock screen gets away without this because it
                 // infers state from MPNowPlayingInfoPropertyPlaybackRate; CarPlay does not.
                 MPNowPlayingInfoCenter.default().playbackState = rate > 0 ? .playing : .paused
+                self.sessionInfoCenter?.playbackState = rate > 0 ? .playing : .paused
             }
         }
     }
@@ -97,6 +110,9 @@ class NowPlayingInfo {
         nowPlayingInfo = [:]
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         MPNowPlayingInfoCenter.default().playbackState = .stopped
+        sessionInfoCenter?.nowPlayingInfo = nil
+        sessionInfoCenter?.playbackState = .stopped
+        sessionInfoCenter = nil
     }
     
     private func setMetadata(artwork: MPMediaItemArtwork?, metadata: NowPlayingMetadata?) {
@@ -112,7 +128,10 @@ class NowPlayingInfo {
         
         nowPlayingInfo[MPNowPlayingInfoPropertyExternalContentIdentifier] = metadata!.id
         nowPlayingInfo[MPNowPlayingInfoPropertyIsLiveStream] = false
-        nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = "hls"
+        // MPNowPlayingInfoPropertyMediaType is documented as NSNumber (MPNowPlayingInfoMediaType);
+        // upstream shipped the string "hls" here. The lock screen tolerates the wrong type, but a
+        // strict consumer (CarPlay's system-rendered Now Playing) may reject the payload over it.
+        nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         
         nowPlayingInfo[MPMediaItemPropertyTitle] = metadata!.title
         nowPlayingInfo[MPMediaItemPropertyArtist] = metadata!.author ?? "unknown"

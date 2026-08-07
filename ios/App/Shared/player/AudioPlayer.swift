@@ -45,6 +45,14 @@ class AudioPlayer: NSObject {
     private var queueItemStatusObserver:NSKeyValueObservation?
     
     private var isRebuildingQueue = false
+
+    // MPNowPlayingSession (iOS 16+) binds this player as the system's now-playing source.
+    // CarPlay's CPNowPlayingTemplate reads metadata from the SESSION's info center and routes
+    // its transport buttons to the SESSION's remote command center -- info written only to
+    // MPNowPlayingInfoCenter.default() and handlers registered only on
+    // MPRemoteCommandCenter.shared() are invisible to it: the screen renders empty and every
+    // button tap goes nowhere. (Typed Any? because the property must exist below iOS 16.)
+    private var nowPlayingSession: Any?
     
     // Sleep timer values
     internal var sleepTimeChapterStopAt: Double?
@@ -71,10 +79,18 @@ class AudioPlayer: NSObject {
         }
         
         super.init()
-        
+
+        // Must exist before setupRemoteTransportControls so the commands land on the
+        // session's command center. See the nowPlayingSession property comment.
+        if #available(iOS 16.0, *) {
+            let session = MPNowPlayingSession(players: [self.audioPlayer])
+            self.nowPlayingSession = session
+            NowPlayingInfo.shared.setInfoCenter(session.nowPlayingInfoCenter)
+        }
+
         self.rateManager.rateChangedCompletion = self.updateNowPlaying
         self.rateManager.defaultRateChangedCompletion = self.setupTimeObservers
-        
+
         initAudioSession()
         setupRemoteTransportControls()
         
@@ -348,6 +364,14 @@ class AudioPlayer: NSObject {
             self.rateManager.handlePlayEvent()
         }
         self.status = .playing
+
+        // Claim the system now-playing slot for this session's player -- without an active
+        // session CarPlay has no now-playing source to bind its template to.
+        if #available(iOS 16.0, *), let session = self.nowPlayingSession as? MPNowPlayingSession {
+            session.becomeActiveIfPossible { success in
+                AbsLogger.info(message: "MPNowPlayingSession.becomeActiveIfPossible: \(success)")
+            }
+        }
 
         // Update the progress
         self.updateNowPlaying()
@@ -680,7 +704,15 @@ class AudioPlayer: NSObject {
         DispatchQueue.runOnMainQueue {
             UIApplication.shared.beginReceivingRemoteControlEvents()
         }
-        let commandCenter = MPRemoteCommandCenter.shared()
+        // When an MPNowPlayingSession owns the player, the system delivers remote commands
+        // (including every CarPlay Now Playing button) to the SESSION's command center --
+        // handlers left on MPRemoteCommandCenter.shared() never fire.
+        let commandCenter: MPRemoteCommandCenter
+        if #available(iOS 16.0, *), let session = nowPlayingSession as? MPNowPlayingSession {
+            commandCenter = session.remoteCommandCenter
+        } else {
+            commandCenter = MPRemoteCommandCenter.shared()
+        }
         let deviceSettings = Database.shared.getDeviceSettings()
         let jumpForwardTime = deviceSettings.jumpForwardTime
         let jumpBackwardsTime = deviceSettings.jumpBackwardsTime
