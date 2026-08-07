@@ -35,6 +35,14 @@ class PlayerHandler {
         NowPlayingInfo.shared.reset()
     }
     
+    /// True when the AVPlayer is actively producing audio output. More reliable than
+    /// checking rate > 0, which is already true while the player is still buffering.
+    /// CarPlay uses this to decide the play/pause state it renders.
+    public static var isAudioActuallyPlaying: Bool {
+        guard let player = player else { return false }
+        return player.audioPlayer.timeControlStatus == .playing
+    }
+
     public static var paused: Bool {
         get {
             guard let player = player else { return true }

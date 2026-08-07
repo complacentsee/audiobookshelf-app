@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		03856B91DBE0962AC68A00B8 /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3380B9A4AD0CCF4BC7D0713 /* CarPlaySceneDelegate.swift */; };
+		21F6E1AA126025B8F539748C /* CarPlayAPIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF96FE4C5AB6D016B4F1623E /* CarPlayAPIModels.swift */; };
+		23F03755C315AAFACB30F06F /* CarPlayLibraryProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6553244B51B41F385076A808 /* CarPlayLibraryProvider.swift */; };
+		2BE2E521F042DAD07ACB3B80 /* CarPlayContinueListeningProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A73AD4487260105A6C1CFAF /* CarPlayContinueListeningProvider.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		3A200C1527D64D7E00CBF02E /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A200C1427D64D7E00CBF02E /* AudioPlayer.swift */; };
 		3A90295F280968E700E1D427 /* PlaybackReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A90295E280968E700E1D427 /* PlaybackReport.swift */; };
@@ -35,8 +39,12 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		6266E1009799369920E78C2D /* CarPlayPlaybackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E1F821072356EC89E2422B /* CarPlayPlaybackManager.swift */; };
 		65643F4DAA661FB0B247247E /* Pods_Audiobookshelf.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F9A7CCC479333E44DC314BE /* Pods_Audiobookshelf.framework */; };
 		6F2516272E68DA3000F40541 /* LogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F2516262E68DA3000F40541 /* LogEntry.swift */; };
+		8AFB012846CA44850ADCECE6 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97ED37C6B28179915617E69B /* SceneDelegate.swift */; };
+		989F5D71569FD5A3A973AC5A /* CarPlayDownloadsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A2C325AC8D5CC30B587D36 /* CarPlayDownloadsProvider.swift */; };
+		BE40B23BB2C289F5DB801B75 /* CarPlayImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56181E497F37E7C71A9A51F9 /* CarPlayImageLoader.swift */; };
 		E9D5504628AC1A3900C746DD /* LibraryItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D5504528AC1A3900C746DD /* LibraryItem.swift */; };
 		E9D5504828AC1A7A00C746DD /* MediaType.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D5504728AC1A7A00C746DD /* MediaType.swift */; };
 		E9D5504A28AC1AA600C746DD /* Metadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D5504928AC1AA600C746DD /* Metadata.swift */; };
@@ -81,8 +89,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		01FD6F26302645E6006E804E /* AudiobookshelfDebug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AudiobookshelfDebug.entitlements; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		3A200C1427D64D7E00CBF02E /* AudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayer.swift; sourceTree = "<group>"; };
+		3A73AD4487260105A6C1CFAF /* CarPlayContinueListeningProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CarPlayContinueListeningProvider.swift; sourceTree = "<group>"; };
 		3A90295E280968E700E1D427 /* PlaybackReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackReport.swift; sourceTree = "<group>"; };
 		3AB34052280829BF0039308B /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
 		3AB34054280832720039308B /* PlayerEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerEvents.swift; sourceTree = "<group>"; };
@@ -112,10 +122,16 @@
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
+		56181E497F37E7C71A9A51F9 /* CarPlayImageLoader.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CarPlayImageLoader.swift; sourceTree = "<group>"; };
+		6553244B51B41F385076A808 /* CarPlayLibraryProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CarPlayLibraryProvider.swift; sourceTree = "<group>"; };
 		6F2516262E68DA3000F40541 /* LogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogEntry.swift; sourceTree = "<group>"; };
 		8F9A7CCC479333E44DC314BE /* Pods_Audiobookshelf.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Audiobookshelf.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		96A2C325AC8D5CC30B587D36 /* CarPlayDownloadsProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CarPlayDownloadsProvider.swift; sourceTree = "<group>"; };
+		97ED37C6B28179915617E69B /* SceneDelegate.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		BE96D57E131924D520D57057 /* Pods-Audiobookshelf.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Audiobookshelf.debug.xcconfig"; path = "Target Support Files/Pods-Audiobookshelf/Pods-Audiobookshelf.debug.xcconfig"; sourceTree = "<group>"; };
 		D2F7F575384A63F1C47DE984 /* Pods-Audiobookshelf.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Audiobookshelf.release.xcconfig"; path = "Target Support Files/Pods-Audiobookshelf/Pods-Audiobookshelf.release.xcconfig"; sourceTree = "<group>"; };
+		D3380B9A4AD0CCF4BC7D0713 /* CarPlaySceneDelegate.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CarPlaySceneDelegate.swift; sourceTree = "<group>"; };
+		D4E1F821072356EC89E2422B /* CarPlayPlaybackManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CarPlayPlaybackManager.swift; sourceTree = "<group>"; };
 		E9D5504528AC1A3900C746DD /* LibraryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryItem.swift; sourceTree = "<group>"; };
 		E9D5504728AC1A7A00C746DD /* MediaType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaType.swift; sourceTree = "<group>"; };
 		E9D5504928AC1AA600C746DD /* Metadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Metadata.swift; sourceTree = "<group>"; };
@@ -148,6 +164,7 @@
 		EACB38112BCCA1330060DA4A /* AudioPlayerRateManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudioPlayerRateManager.swift; sourceTree = "<group>"; };
 		EACB38132BCCA1410060DA4A /* LegacyAudioPlayerRateManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LegacyAudioPlayerRateManager.swift; sourceTree = "<group>"; };
 		EACB38152BCCA1500060DA4A /* DefaultedAudioPlayerRateManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DefaultedAudioPlayerRateManager.swift; sourceTree = "<group>"; };
+		FF96FE4C5AB6D016B4F1623E /* CarPlayAPIModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CarPlayAPIModels.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -260,6 +277,7 @@
 		504EC2FB1FED79650016851F = {
 			isa = PBXGroup;
 			children = (
+				01FD6F26302645E6006E804E /* AudiobookshelfDebug.entitlements */,
 				3AC8248B27F2316900529205 /* Shared */,
 				504EC3061FED79650016851F /* App */,
 				E9E8813B28DA5DE500D750C1 /* AudiobookshelfUnitTests */,
@@ -292,8 +310,25 @@
 				50B271D01FEDC1A000F3C39B /* public */,
 				4D8D412C26E187E400BA5F0D /* App-Bridging-Header.h */,
 				4DFE2DA22D345C390000B204 /* MyViewController.swift */,
+				97ED37C6B28179915617E69B /* SceneDelegate.swift */,
+				8E6E7DCD4B1ECCB73DBBBEF3 /* CarPlay */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		8E6E7DCD4B1ECCB73DBBBEF3 /* CarPlay */ = {
+			isa = PBXGroup;
+			children = (
+				FF96FE4C5AB6D016B4F1623E /* CarPlayAPIModels.swift */,
+				3A73AD4487260105A6C1CFAF /* CarPlayContinueListeningProvider.swift */,
+				96A2C325AC8D5CC30B587D36 /* CarPlayDownloadsProvider.swift */,
+				56181E497F37E7C71A9A51F9 /* CarPlayImageLoader.swift */,
+				6553244B51B41F385076A808 /* CarPlayLibraryProvider.swift */,
+				D4E1F821072356EC89E2422B /* CarPlayPlaybackManager.swift */,
+				D3380B9A4AD0CCF4BC7D0713 /* CarPlaySceneDelegate.swift */,
+			);
+			name = CarPlay;
+			path = CarPlay;
 			sourceTree = "<group>";
 		};
 		E9D5506328AC1D3F00C746DD /* server */ = {
@@ -579,6 +614,14 @@
 				E9E8814A28DA644F00D750C1 /* PlayerTimeUtils.swift in Sources */,
 				3AB34055280832720039308B /* PlayerEvents.swift in Sources */,
 				E9D5506C28AC1E2100C746DD /* LocalMediaProgress.swift in Sources */,
+				8AFB012846CA44850ADCECE6 /* SceneDelegate.swift in Sources */,
+				21F6E1AA126025B8F539748C /* CarPlayAPIModels.swift in Sources */,
+				2BE2E521F042DAD07ACB3B80 /* CarPlayContinueListeningProvider.swift in Sources */,
+				989F5D71569FD5A3A973AC5A /* CarPlayDownloadsProvider.swift in Sources */,
+				BE40B23BB2C289F5DB801B75 /* CarPlayImageLoader.swift in Sources */,
+				23F03755C315AAFACB30F06F /* CarPlayLibraryProvider.swift in Sources */,
+				6266E1009799369920E78C2D /* CarPlayPlaybackManager.swift in Sources */,
+				03856B91DBE0962AC68A00B8 /* CarPlaySceneDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -739,6 +782,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = Icons;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = AudiobookshelfDebug.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 48;
 				DEVELOPMENT_TEAM = 7UFJ7D8V6A;

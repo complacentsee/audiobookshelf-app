@@ -1,12 +1,15 @@
 import UIKit
 import Capacitor
 import RealmSwift
+import AVFoundation
+import MediaPlayer
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     lazy var window: UIWindow? = UIWindow(frame: UIScreen.main.bounds)
     var backgroundCompletionHandler: (() -> Void)?
+    private let logger = AppLogger(category: "AppDelegate")
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
@@ -79,7 +82,36 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         )
         Realm.Configuration.defaultConfiguration = configuration
 
+        // Establish the audio session up front so the system registers this as an audio
+        // app. CarPlay only offers a Now Playing origin to apps with an active session,
+        // so this has to happen at launch rather than when playback first starts.
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: [])
+            try AVAudioSession.sharedInstance().setActive(true, options: [])
+        } catch {
+            logger.error("Failed to set AVAudioSession category/activate: \(error)")
+        }
+
+        // CarPlay requires remote control events to be active before CPNowPlayingTemplate
+        // is pushed, so claim them for the app's lifetime rather than per playback session.
+        UIApplication.shared.beginReceivingRemoteControlEvents()
+
         return true
+    }
+
+    // MARK: - Scene Configuration
+
+    func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        if connectingSceneSession.role == .carTemplateApplication {
+            let config = UISceneConfiguration(name: "CarPlay Configuration", sessionRole: connectingSceneSession.role)
+            config.delegateClass = CarPlaySceneDelegate.self
+            return config
+        }
+
+        let config = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+        config.delegateClass = SceneDelegate.self
+        config.storyboard = UIStoryboard(name: "Main", bundle: nil)
+        return config
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
