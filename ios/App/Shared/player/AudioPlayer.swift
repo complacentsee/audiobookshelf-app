@@ -838,10 +838,18 @@ class AudioPlayer: NSObject {
     }
     private func updateNowPlaying() {
         NotificationCenter.default.post(name: NSNotification.Name(PlayerEvents.update.rawValue), object: nil)
-        if let session = self.getPlaybackSession(), let currentChapter = session.getCurrentChapter(), PlayerSettings.main().chapterTrack {
+        // Chapter and elapsed time must come from the LIVE player position. session.currentTime
+        // is the persisted value, refreshed only at progress-sync cadence and not written by
+        // same-track seeks at all -- computing from it re-anchors the system Now Playing clock
+        // (lock screen, CarPlay) at the pre-seek position after a chapter skip, while the
+        // in-app UI reads the player directly and shows the correct time.
+        let liveTime = self.getCurrentTime()
+        if let session = self.getPlaybackSession(),
+           let currentChapter = session.getCurrentChapter(at: liveTime),
+           PlayerSettings.main().chapterTrack {
             NowPlayingInfo.shared.update(
                 duration: currentChapter.getRelativeChapterEndTime(),
-                currentTime: currentChapter.getRelativeChapterCurrentTime(sessionCurrentTime: session.currentTime),
+                currentTime: currentChapter.getRelativeChapterCurrentTime(sessionCurrentTime: liveTime ?? session.currentTime),
                 rate: self.rateManager.rate,
                 defaultRate: self.rateManager.defaultRate,
                 chapterName: currentChapter.title,
