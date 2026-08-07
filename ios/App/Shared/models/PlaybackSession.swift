@@ -162,9 +162,14 @@ class PlaybackSession: Object, Codable, Deletable {
 }
 
 extension PlaybackSession {
-    func getCurrentChapter() -> Chapter? {
+    /// - Parameter time: position to resolve the chapter for. Defaults to the persisted
+    ///   session time, which is only refreshed at progress-sync cadence -- callers with
+    ///   access to the live player position (e.g. Now Playing updates right after a seek)
+    ///   should pass it, or the resolved chapter lags the audio.
+    func getCurrentChapter(at time: Double? = nil) -> Chapter? {
+        let position = time ?? self.currentTime
         return chapters.first { chapter in
-            chapter.start <= self.currentTime && chapter.end > self.currentTime
+            chapter.start <= position && chapter.end > position
         }
     }
 }
