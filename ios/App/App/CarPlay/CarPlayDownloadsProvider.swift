@@ -22,8 +22,30 @@ class CarPlayDownloadsProvider {
         self.interfaceController = interfaceController
     }
 
+    /// A local item is only playable if its audio files actually exist on disk as regular files.
+    /// Downloads can be hollowed out after the fact (observed: a device migration left hundreds of
+    /// audio files as empty directories); handing such a path to AVPlayer fails with a generic
+    /// "operation could not be completed" and the CarPlay tap appears to do nothing at all.
+    private func isPlayable(_ item: LocalLibraryItem) -> Bool {
+        let audioFiles = item.localFiles.filter { $0.isAudioFile() }
+        guard !audioFiles.isEmpty else { return false }
+        for file in audioFiles {
+            var isDirectory: ObjCBool = false
+            let path = file.contentPath.path
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue else {
+                AbsLogger.error(message: "CarPlay Downloads: '\(item.media?.metadata?.title ?? item.id)' has missing/invalid audio file: \(file.filename ?? path)")
+                return false
+            }
+        }
+        return true
+    }
+
     func reload() {
-        let localItems = Database.shared.getLocalLibraryItems()
+        let allItems = Database.shared.getLocalLibraryItems()
+        let localItems = allItems.filter { isPlayable($0) }
+        if localItems.count < allItems.count {
+            AbsLogger.error(message: "CarPlay Downloads: hiding \(allItems.count - localItems.count) of \(allItems.count) local items with missing audio files")
+        }
 
         if localItems.isEmpty {
             let emptySection = CPListSection(items: [])

@@ -9,6 +9,7 @@ import CarPlay
 import Foundation
 import MediaPlayer
 import AVFoundation
+import Network
 
 @available(iOS 14.0, *)
 class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
@@ -24,6 +25,13 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private var dataLoadRetryCount = 0
     private let maxDataLoadRetries = 5
     private var hasAttemptedMidSessionRestore = false  // kept for cold-start edge case
+
+    // In-car connectivity often arrives AFTER the CarPlay scene does (LTE handoff, VPN tunnel
+    // coming up). The cold-start/data-load retries are finite, so without this the server lists
+    // stay empty for the rest of the drive once they exhaust. Reload when the network path
+    // becomes satisfied again.
+    private var pathMonitor: NWPathMonitor?
+    private var lastPathSatisfied = true
 
     // MARK: - CPTemplateApplicationSceneDelegate
 
@@ -85,6 +93,19 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             scheduleDataLoadRetryIfNeeded()
         }
 
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            guard let self = self else { return }
+            let satisfied = path.status == .satisfied
+            if satisfied && !self.lastPathSatisfied {
+                AbsLogger.info(message: "CarPlay: network path restored, reloading lists")
+                self.reloadAllProviders()
+            }
+            self.lastPathSatisfied = satisfied
+        }
+        monitor.start(queue: DispatchQueue.global(qos: .utility))
+        self.pathMonitor = monitor
+
         AbsLogger.info(message: "CarPlay scene didConnect, serverConfig=\(Store.serverConfig != nil ? "available" : "nil")")
 
         // If there's active playback when CarPlay connects, show Now Playing
@@ -101,6 +122,8 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         didDisconnect interfaceController: CPInterfaceController
     ) {
         NotificationCenter.default.removeObserver(self)
+        pathMonitor?.cancel()
+        pathMonitor = nil
         CPNowPlayingTemplate.shared.remove(self)
         CarPlaySceneDelegate.shared = nil
         self.interfaceController = nil
