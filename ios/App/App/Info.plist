@@ -63,6 +63,35 @@
 			</array>
 		</dict>
 	</dict>
+	<!-- Siri media intents ("play <title> on Audiobookshelf") are handled in-app via
+	     application(_:handlerFor:) -- no Intents extension target. -->
+	<key>INIntentsSupported</key>
+	<array>
+		<string>INPlayMediaIntent</string>
+	</array>
+	<key>INSupportedMediaCategories</key>
+	<array>
+		<string>INMediaCategoryAudiobooks</string>
+	</array>
+	<!-- Siri speech recognition rarely produces "Audiobookshelf" as one word; without these
+	     variants the request routes to Apple Music / TuneIn instead of this app. -->
+	<key>INAlternativeAppNames</key>
+	<array>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>audio book shelf</string>
+		</dict>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>audiobook shelf</string>
+		</dict>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>audiobookshelf</string>
+		</dict>
+	</array>
+	<key>CFBundleSpokenName</key>
+	<string>audiobook shelf</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
@@ -70,6 +99,12 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<!-- Undocumented requirement: without NSAppleMusicUsageDescription the system never loads
+	     the in-app INPlayMediaIntent handler -- it fails silently (Apple forum thread 124605). -->
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Required for Siri media playback</string>
+	<key>NSSiriUsageDescription</key>
+	<string>Play audiobooks by voice</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>INPlayMediaIntent</string>

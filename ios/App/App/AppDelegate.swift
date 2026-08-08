@@ -3,6 +3,7 @@ import Capacitor
 import RealmSwift
 import AVFoundation
 import MediaPlayer
+import Intents
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -96,7 +97,27 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // is pushed, so claim them for the app's lifetime rather than per playback session.
         UIApplication.shared.beginReceivingRemoteControlEvents()
 
+        // Siri media intents are handled in-app (application(_:handlerFor:)); ask for
+        // authorization up front so "play <title> on Audiobookshelf" works on first try.
+        if #available(iOS 14.0, *) {
+            INPreferences.requestSiriAuthorization { [weak self] status in
+                // AppLogger, not AbsLogger: this completion can fire on a background queue
+                // before the webview/Database are warmed up.
+                self?.logger.log("Siri authorization status: \(status.rawValue)")
+            }
+        }
+
         return true
+    }
+
+    // MARK: - Siri
+
+    /// In-app SiriKit media intent handling (iOS 14+, no extension target).
+    func application(_ application: UIApplication, handlerFor intent: INIntent) -> Any? {
+        if #available(iOS 14.0, *), intent is INPlayMediaIntent {
+            return SiriPlayMediaHandler()
+        }
+        return nil
     }
 
     // MARK: - Scene Configuration
