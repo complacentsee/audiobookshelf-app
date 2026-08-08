@@ -105,6 +105,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 // before the webview/Database are warmed up.
                 self?.logger.log("Siri authorization status: \(status.rawValue)")
             }
+            // Deferred past launch: the first refresh opens Realm (Store.serverConfig) and
+            // fans out network fetches -- none of that belongs inside didFinishLaunching.
+            DispatchQueue.main.async {
+                SiriMediaContext.initialize()
+            }
         }
 
         return true
@@ -154,6 +159,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func applicationDidBecomeActive(_ application: UIApplication) {
         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
         AbsLogger.info(message: "Audiobookself is now active")
+        if #available(iOS 14.0, *) {
+            SiriMediaContext.refreshIfStale()
+        }
     }
 
     func applicationWillTerminate(_ application: UIApplication) {

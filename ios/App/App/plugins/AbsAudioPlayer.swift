@@ -9,6 +9,7 @@ import Foundation
 import Capacitor
 import RealmSwift
 import Network
+import Intents
 
 @objc(AbsAudioPlayer)
 public class AbsAudioPlayer: CAPPlugin, CAPBridgedPlugin {
@@ -105,6 +106,47 @@ public class AbsAudioPlayer: CAPPlugin, CAPBridgedPlugin {
         self.sendPlaybackSession(session: try session.asDictionary())
         PlayerHandler.startPlayback(sessionId: session.id, playWhenReady: playWhenReady, playbackRate: playbackRate)
         self.sendMetadata()
+        self.donateSiriPlayInteraction(for: session)
+    }
+
+    /// Donating in-app playback starts teaches Siri Suggestions and, over time, lets
+    /// "play <title>" work without the app name. Webview-initiated starts only: SiriKit
+    /// already knows about plays it handed us (Apple: never re-donate those), and CarPlay
+    /// and Siri both run through PlaybackLauncher, so hooking that shared path would
+    /// donate them too.
+    private func donateSiriPlayInteraction(for session: PlaybackSession) {
+        guard #available(iOS 14.0, *) else { return }
+        // Books only until podcast episodes get Siri routing (phase 3).
+        guard session.episodeId == nil else { return }
+        // Local id when downloaded so the Siri handle path replays offline; matches the
+        // identifier convention in SiriPlayMediaHandler.
+        guard let identifier = session.localLibraryItem?.id ?? session.libraryItemId else { return }
+
+        let mediaItem = INMediaItem(
+            identifier: identifier,
+            title: session.displayTitle,
+            type: .audioBook,
+            artwork: nil,
+            artist: session.displayAuthor
+        )
+        let intent = INPlayMediaIntent(
+            mediaItems: [mediaItem],
+            mediaContainer: nil,
+            playShuffled: false,
+            playbackRepeatMode: .none,
+            resumePlayback: true,
+            playbackQueueLocation: .now,
+            playbackSpeed: nil,
+            mediaSearch: nil
+        )
+        let interaction = INInteraction(intent: intent, response: INPlayMediaIntentResponse(code: .success, userActivity: nil))
+        // Grouped per item so INInteraction.delete(with:) can clear a finished book later.
+        interaction.groupIdentifier = identifier
+        interaction.donate { error in
+            if let error = error {
+                AbsLogger.error(message: "Failed to donate Siri play interaction: \(error)")
+            }
+        }
     }
 
     @objc func prepareLibraryItem(_ call: CAPPluginCall) {

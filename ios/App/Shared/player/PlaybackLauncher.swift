@@ -14,7 +14,10 @@ class PlaybackLauncher {
 
     private static var nowPlayingPollTimer: Timer?
 
-    static func playServerItem(libraryItemId: String, episodeId: String? = nil) {
+    /// `completion` reports whether playback actually started (true also covers the
+    /// already-playing short-circuit), so callers with a user-facing contract (Siri's
+    /// .success/.failure response) can answer honestly. CarPlay callers omit it.
+    static func playServerItem(libraryItemId: String, episodeId: String? = nil, completion: ((Bool) -> Void)? = nil) {
         AbsLogger.info(message: "playServerItem called for \(libraryItemId)")
 
         // If this item is already playing, just navigate to Now Playing
@@ -23,6 +26,7 @@ class PlaybackLauncher {
            (episodeId == nil || currentSession.episodeId == episodeId) {
             AbsLogger.info(message: "Item already playing, pushing Now Playing")
             CarPlaySceneDelegate.shared?.pushNowPlaying()
+            completion?(true)
             return
         }
 
@@ -32,8 +36,10 @@ class PlaybackLauncher {
         ApiClient.startPlaybackSession(libraryItemId: libraryItemId, episodeId: episodeId, forceTranscode: false) { session in
             AbsLogger.info(message: "API callback received, session.id='\(session.id)' displayTitle='\(session.displayTitle ?? "NIL")' duration=\(session.duration)")
 
+            // ApiClient signals any failure as a callback with an empty session id.
             guard !session.id.isEmpty else {
                 AbsLogger.error(message: "ERROR: Empty session ID!")
+                completion?(false)
                 return
             }
 
@@ -46,8 +52,10 @@ class PlaybackLauncher {
                 PlayerHandler.startPlayback(sessionId: session.id, playWhenReady: true, playbackRate: playbackRate)
                 notifyWebviewOfExternalSession(session.id)
                 scheduleNowPlayingPush()
+                completion?(true)
             } catch {
                 AbsLogger.error(message: "ERROR saving session: \(error)")
+                completion?(false)
             }
         }
     }

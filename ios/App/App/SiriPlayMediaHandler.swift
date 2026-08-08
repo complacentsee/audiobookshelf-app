@@ -3,10 +3,9 @@
 //  App
 //
 //  Handles "Hey Siri, play <title> on Audiobookshelf" (INPlayMediaIntent), in-app via
-//  application(_:handlerFor:) -- no Intents extension target. Phase 1: downloaded books only.
-//
-//  Every Siri callback must complete well inside Siri's ~10 second budget; everything here is
-//  local Realm + filesystem work, so that is comfortably met.
+//  application(_:handlerFor:) -- no Intents extension target. Downloaded books resolve
+//  locally and instantly; everything else races a server search with a hard deadline so
+//  every Siri callback completes well inside Siri's ~10 second budget.
 //
 
 import Foundation
@@ -16,10 +15,41 @@ import UIKit
 @available(iOS 14.0, *)
 class SiriPlayMediaHandler: NSObject, INPlayMediaIntentHandling {
 
-    /// INMediaItem identifiers are LocalLibraryItem ids verbatim. Those are intrinsically
+    /// INMediaItem identifiers are item ids verbatim. LocalLibraryItem ids are intrinsically
     /// "local_<UUID>" (see LocalLibraryItem.id), while server library item ids are bare UUIDs,
-    /// so the prefix doubles as the local-vs-server routing discriminator for phase 2.
+    /// so the prefix doubles as the local-vs-server routing discriminator in handle().
     private static let localIdPrefix = "local_"
+
+    /// Server search budget inside resolveMediaItems. Timing out degrades to local-only.
+    private static let serverSearchTimeout: TimeInterval = 4.0
+    /// Cosmetic cover fetch for a server-only top match; never worth more than this.
+    private static let artworkGrace: TimeInterval = 1.0
+    /// How long handle() waits for a server stream to start before answering .inProgress.
+    private static let serverHandleDeadline: TimeInterval = 8.0
+    /// A book the user is partway through outranks a same-score cold book.
+    private static let inProgressBoost = 15
+    /// artistName arriving in its own intent slot confirming the candidate's author.
+    private static let artistMatchBoost = 10
+    /// The server matched this item on something the local scorer cannot see (series,
+    /// narrator, subtitle); keep it as a low-ranked alternative rather than dropping it.
+    private static let serverMatchFloorScore = 20
+    /// Siri auto-plays the first item; the rest render as tap-to-switch alternatives.
+    private static let maxResults = 3
+
+    /// One scored candidate from either source. Everything is a plain value copied out of
+    /// the Realm object at scoring time: candidates live across async gaps (server search,
+    /// artwork fetch) and a live LocalLibraryItem can be invalidated by a concurrent
+    /// delete before it is read again.
+    private struct Candidate {
+        let id: String
+        let title: String
+        let author: String?
+        let isLocal: Bool
+        /// The server-side id of a downloaded copy (LocalLibraryItem.libraryItemId).
+        let serverLibraryItemId: String?
+        let localCoverUrl: URL?
+        var score: Int
+    }
 
     // MARK: - INPlayMediaIntentHandling
 
@@ -32,48 +62,77 @@ class SiriPlayMediaHandler: NSObject, INPlayMediaIntentHandling {
             completion([INPlayMediaMediaItemResolutionResult.unsupported()])
             return
         }
+        let artistName = intent.mediaSearch?.artistName
 
         // Intents callbacks arrive on a background queue; keep Realm access on main like
-        // the rest of the app.
+        // the rest of the app. Every continuation below also lands on main (Alamofire,
+        // group.notify, deadlines), so this whole resolve is single-queue and race-free.
         DispatchQueue.main.async {
-            let candidates = Database.shared.getLocalLibraryItems().filter { $0.isBook }
+            let localCandidates = Self.scoredLocalCandidates(query: query, artistName: artistName)
 
-            // Validate files on disk only for actual contenders, best first, so a hollowed-out
-            // download never wins but the whole library isn't stat'ed on every query.
-            let ranked = Self.rankedMatches(for: query, in: candidates)
-            guard let match = ranked.first(where: { PlaybackLauncher.isPlayable($0) }) else {
-                AbsLogger.error(message: "Siri: no playable local match for '\(query)' among \(candidates.count) books")
-                completion([INPlayMediaMediaItemResolutionResult.unsupported()])
-                return
+            // The server matches each field by substring, so the " by "-split title-only
+            // variant must be sent as its own query or "<title> by <author>" phrases would
+            // miss every non-downloaded book.
+            let serverQueries = Self.searchQueries(for: query).map { $0.q }
+            ApiClient.searchAllLibraries(queries: serverQueries, timeout: Self.serverSearchTimeout) { serverResults in
+                let merged = Self.mergeAndRank(local: localCandidates, server: serverResults, query: query, artistName: artistName)
+                guard !merged.isEmpty else {
+                    AbsLogger.error(message: "Siri: no match for '\(query)' (\(localCandidates.count) local, \(serverResults.count) server results)")
+                    completion([INPlayMediaMediaItemResolutionResult.unsupported()])
+                    return
+                }
+                Self.resolutionResults(for: Array(merged.prefix(Self.maxResults)), query: query, completion: completion)
             }
-
-            let title = match.media?.metadata?.title ?? "Unknown"
-            AbsLogger.info(message: "Siri: query '\(query)' matched '\(title)' (\(match.id))")
-
-            let mediaItem = INMediaItem(
-                identifier: match.id,
-                title: title,
-                type: .audioBook,
-                artwork: Self.artwork(for: match),
-                artist: match.media?.metadata?.authorDisplayName
-            )
-            completion([INPlayMediaMediaItemResolutionResult.success(with: mediaItem)])
         }
     }
 
     func handle(intent: INPlayMediaIntent, completion: @escaping (INPlayMediaIntentResponse) -> Void) {
-        guard let localLibraryItemId = intent.mediaItems?.first?.identifier,
-              localLibraryItemId.hasPrefix(Self.localIdPrefix) else {
-            AbsLogger.error(message: "Siri: handle() with unexpected identifier: \(intent.mediaItems?.first?.identifier ?? "nil")")
+        guard let itemId = intent.mediaItems?.first?.identifier, !itemId.isEmpty else {
+            AbsLogger.error(message: "Siri: handle() with no identifier")
             completion(INPlayMediaIntentResponse(code: .failure, userActivity: nil))
             return
         }
 
-        AbsLogger.info(message: "Siri: starting playback for \(localLibraryItemId)")
+        AbsLogger.info(message: "Siri: starting playback for \(itemId)")
 
         DispatchQueue.main.async {
-            let started = PlaybackLauncher.playLocalItem(localLibraryItemId: localLibraryItemId)
-            completion(INPlayMediaIntentResponse(code: started ? .success : .failure, userActivity: nil))
+            if itemId.hasPrefix(Self.localIdPrefix) {
+                let started = PlaybackLauncher.playLocalItem(localLibraryItemId: itemId)
+                completion(INPlayMediaIntentResponse(code: started ? .success : .failure, userActivity: nil))
+                return
+            }
+
+            // Server ids can reach handle() for books that are also downloaded (donations
+            // and Listen Now suggestions predate a download; resolve remaps, but only for
+            // its own results). A playable local copy always wins over streaming.
+            if let localTwin = Database.shared.getLocalLibraryItem(byServerLibraryItemId: itemId),
+               PlaybackLauncher.isPlayable(localTwin) {
+                AbsLogger.info(message: "Siri: server id \(itemId) has playable local copy \(localTwin.id), playing locally")
+                let started = PlaybackLauncher.playLocalItem(localLibraryItemId: localTwin.id)
+                completion(INPlayMediaIntentResponse(code: started ? .success : .failure, userActivity: nil))
+                return
+            }
+
+            // Server stream: session create + save can outlive Siri's patience on a slow
+            // network. Answer .inProgress at the deadline -- playback still starts when the
+            // session lands, and .failure would make Siri apologize over audio that then
+            // begins playing.
+            var responded = false
+            let respond: (INPlayMediaIntentResponseCode) -> Void = { code in
+                guard !responded else { return }
+                responded = true
+                completion(INPlayMediaIntentResponse(code: code, userActivity: nil))
+            }
+            let deadline = DispatchWorkItem {
+                AbsLogger.info(message: "Siri: server playback start exceeded \(Self.serverHandleDeadline)s, answering .inProgress")
+                respond(.inProgress)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.serverHandleDeadline, execute: deadline)
+
+            PlaybackLauncher.playServerItem(libraryItemId: itemId) { started in
+                deadline.cancel()
+                respond(started ? .success : .failure)
+            }
         }
     }
 
@@ -81,14 +140,14 @@ class SiriPlayMediaHandler: NSObject, INPlayMediaIntentHandling {
 
     /// Lowercase, diacritic-insensitive fuzzy match over title + author, mirroring the Android
     /// app's search semantics (MediaManager.getFromSearch: lowercase substring, local-first).
-    /// Returns matches best-first so the caller can walk down until one passes disk validation.
-    static func rankedMatches(for query: String, in items: [LocalLibraryItem]) -> [LocalLibraryItem] {
+    ///
+    /// Siri often leaves the artist clause inside mediaName ("project hail mary by andy weir");
+    /// the part before the last " by " is retried as a title-only query, penalized so a real
+    /// title containing " by " still wins outright.
+    private static func searchQueries(for query: String) -> [(q: String, penalty: Int)] {
         let q = normalize(query)
         guard !q.isEmpty else { return [] }
 
-        // Siri often leaves the artist clause inside mediaName ("project hail mary by andy
-        // weir"); retry the part before the last " by " as a title-only query, penalized so a
-        // real title containing " by " still wins outright.
         var queries: [(q: String, penalty: Int)] = [(q, 0)]
         if let byRange = q.range(of: " by ", options: .backwards) {
             let titleOnly = String(q[..<byRange.lowerBound]).trimmingCharacters(in: .whitespaces)
@@ -96,40 +155,123 @@ class SiriPlayMediaHandler: NSObject, INPlayMediaIntentHandling {
                 queries.append((titleOnly, 5))
             }
         }
+        return queries
+    }
 
-        var scored: [(score: Int, item: LocalLibraryItem)] = []
-        for item in items {
-            guard let rawTitle = item.media?.metadata?.title else { continue }
-            let title = normalize(rawTitle)
-            let rawAuthor = normalize(item.media?.metadata?.authorDisplayName ?? "")
-            // "Unknown" is the model's placeholder for missing metadata, not searchable text;
-            // without this, queries like "know" fuzzy-match every metadata-less book.
-            let author = rawAuthor == "unknown" ? "" : rawAuthor
+    private static func scoredLocalCandidates(query: String, artistName: String?) -> [Candidate] {
+        let queries = searchQueries(for: query)
+        guard !queries.isEmpty else { return [] }
+        let artist = normalizedArtist(artistName)
+        let inProgressIds = localInProgressIds()
 
-            var best: Int?
-            for (candidate, penalty) in queries {
-                if let s = Self.score(query: candidate, title: title, author: author) {
-                    best = max(best ?? Int.min, s - penalty)
+        var candidates: [Candidate] = []
+        for item in Database.shared.getLocalLibraryItems() where item.isBook {
+            guard let rawTitle = item.media?.metadata?.title,
+                  var score = Self.score(queries: queries, artist: artist, rawTitle: rawTitle,
+                                         rawAuthor: item.media?.metadata?.authorDisplayName) else { continue }
+            // Validate files on disk for scored contenders only, so a hollowed-out download
+            // never wins but the whole library isn't stat'ed on every query.
+            guard PlaybackLauncher.isPlayable(item) else { continue }
+            if inProgressIds.contains(item.id) {
+                score += inProgressBoost
+            }
+            candidates.append(Candidate(
+                id: item.id,
+                title: rawTitle,
+                author: cleanAuthor(item.media?.metadata?.authorDisplayName),
+                isLocal: true,
+                serverLibraryItemId: item.libraryItemId,
+                localCoverUrl: item.coverUrl,
+                score: score
+            ))
+        }
+        return candidates
+    }
+
+    private static func mergeAndRank(local: [Candidate], server: [LibraryItemResult], query: String, artistName: String?) -> [Candidate] {
+        let queries = searchQueries(for: query)
+        let artist = normalizedArtist(artistName)
+        // A playable downloaded copy beats its own server twin (instant + works offline).
+        // An unplayable local copy was never scored, so its server twin survives here.
+        let downloadedServerIds = Set(local.compactMap { $0.serverLibraryItemId })
+        let serverInProgressIds = SiriMediaContext.inProgressLibraryItemIds
+        let localInProgressIds = Self.localInProgressIds()
+
+        var merged = local
+        for result in server {
+            guard !downloadedServerIds.contains(result.id) else { continue }
+            guard (result.mediaType ?? "book") == "book" else { continue }
+            var score = Self.score(queries: queries, artist: artist, rawTitle: result.title, rawAuthor: result.authorName)
+                ?? serverMatchFloorScore
+
+            // The server can match on fields the local scorer cannot see (subtitle,
+            // series, narrator), so this hit may still be a downloaded book that produced
+            // no local candidate. Remap it onto the playable local copy rather than
+            // streaming a book that is sitting on disk.
+            if let localTwin = Database.shared.getLocalLibraryItem(byServerLibraryItemId: result.id),
+               localTwin.isBook, PlaybackLauncher.isPlayable(localTwin) {
+                if serverInProgressIds.contains(result.id) || localInProgressIds.contains(localTwin.id) {
+                    score += inProgressBoost
                 }
+                merged.append(Candidate(
+                    id: localTwin.id,
+                    title: localTwin.media?.metadata?.title ?? result.title ?? "Unknown",
+                    author: cleanAuthor(localTwin.media?.metadata?.authorDisplayName ?? result.authorName),
+                    isLocal: true,
+                    serverLibraryItemId: result.id,
+                    localCoverUrl: localTwin.coverUrl,
+                    score: score
+                ))
+                continue
             }
-            if let best = best {
-                scored.append((best, item))
+
+            if serverInProgressIds.contains(result.id) {
+                score += inProgressBoost
             }
+            merged.append(Candidate(
+                id: result.id,
+                title: result.title ?? "Unknown",
+                author: cleanAuthor(result.authorName),
+                isLocal: false,
+                serverLibraryItemId: nil,
+                localCoverUrl: nil,
+                score: score
+            ))
         }
 
-        // Realm enumeration order is unspecified; a stable title/id tie-break keeps ambiguous
-        // queries picking the same book every time.
-        return scored.sorted {
+        // Deterministic order: score, then local before server (instant + offline), then a
+        // stable title/id tie-break so ambiguous queries pick the same book every time.
+        return merged.sorted {
             if $0.score != $1.score { return $0.score > $1.score }
-            let t0 = $0.item.media?.metadata?.title ?? ""
-            let t1 = $1.item.media?.metadata?.title ?? ""
-            if t0 != t1 { return t0 < t1 }
-            return $0.item.id < $1.item.id
-        }.map { $0.item }
+            if $0.isLocal != $1.isLocal { return $0.isLocal }
+            if $0.title != $1.title { return $0.title < $1.title }
+            return $0.id < $1.id
+        }
+    }
+
+    private static func score(queries: [(q: String, penalty: Int)], artist: String?, rawTitle: String?, rawAuthor: String?) -> Int? {
+        guard let rawTitle = rawTitle else { return nil }
+        let title = normalize(rawTitle)
+        // "Unknown" is the model's placeholder for missing metadata, not searchable text;
+        // without this, queries like "know" fuzzy-match every metadata-less book.
+        let rawAuthorNormalized = normalize(rawAuthor ?? "")
+        let author = rawAuthorNormalized == "unknown" ? "" : rawAuthorNormalized
+
+        var best: Int?
+        for (candidate, penalty) in queries {
+            if let s = Self.score(query: candidate, title: title, author: author) {
+                best = max(best ?? Int.min, s - penalty)
+            }
+        }
+        guard var result = best else { return nil }
+        if let artist = artist, !author.isEmpty, author.contains(artist) {
+            result += artistMatchBoost
+        }
+        return result
     }
 
     private static func score(query q: String, title: String, author: String) -> Int? {
-        // Placeholder titles only match exactly, never fuzzily (see rankedMatches).
+        // Placeholder titles only match exactly, never fuzzily (see score(queries:...)).
         if title == "unknown" {
             return title == q ? 100 : nil
         }
@@ -155,16 +297,82 @@ class SiriPlayMediaHandler: NSObject, INPlayMediaIntentHandling {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private static func normalizedArtist(_ artistName: String?) -> String? {
+        guard let artistName = artistName else { return nil }
+        let artist = normalize(artistName)
+        return artist.isEmpty ? nil : artist
+    }
+
+    /// Display author for the Siri UI; the "Unknown" placeholder reads better omitted.
+    private static func cleanAuthor(_ author: String?) -> String? {
+        guard let author = author, !author.isEmpty, author.caseInsensitiveCompare("unknown") != .orderedSame else { return nil }
+        return author
+    }
+
+    /// Books mid-listen: for books LocalMediaProgress.id == localLibraryItemId.
+    private static func localInProgressIds() -> Set<String> {
+        return Set(Database.shared.getAllLocalMediaProgress()
+            .filter { $0.progress > 0 && !$0.isFinished }
+            .map { $0.localLibraryItemId })
+    }
+
+    // MARK: - Resolution results
+
+    /// successes(with:) auto-plays the FIRST item; the rest appear in the Siri UI as
+    /// tap-to-switch alternatives. Artwork is fetched for the top item only.
+    private static func resolutionResults(for candidates: [Candidate], query: String, completion: @escaping ([INPlayMediaMediaItemResolutionResult]) -> Void) {
+        guard let top = candidates.first else {
+            completion([INPlayMediaMediaItemResolutionResult.unsupported()])
+            return
+        }
+        AbsLogger.info(message: "Siri: query '\(query)' matched '\(top.title)' (\(top.id)), \(candidates.count) candidate(s)")
+
+        let finish: (INImage?) -> Void = { topArtwork in
+            let mediaItems = candidates.enumerated().map { index, candidate in
+                INMediaItem(
+                    identifier: candidate.id,
+                    title: candidate.title,
+                    type: .audioBook,
+                    artwork: index == 0 ? topArtwork : nil,
+                    artist: candidate.author
+                )
+            }
+            completion(INPlayMediaMediaItemResolutionResult.successes(with: mediaItems))
+        }
+
+        if top.isLocal {
+            finish(Self.artwork(atFileURL: top.localCoverUrl))
+            return
+        }
+
+        var fired = false
+        let fire: (INImage?) -> Void = { image in
+            guard !fired else { return }
+            fired = true
+            finish(image)
+        }
+        let deadline = DispatchWorkItem { fire(nil) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + artworkGrace, execute: deadline)
+        CarPlayImageLoader.shared.loadCoverArt(for: top.id) { image in
+            deadline.cancel()
+            fire(image.flatMap { Self.inImage(from: $0) })
+        }
+    }
+
     // MARK: - Artwork
 
     /// Local covers are files on disk (LocalLibraryItem.coverUrl); INImage(url:) only supports
-    /// remote fetches reliably, so decode the file directly. Embedded covers can be multi-MB,
-    /// and INImage payloads cross XPC to the Siri UI -- downscale to thumbnail size first.
-    private static func artwork(for item: LocalLibraryItem) -> INImage? {
-        guard let url = item.coverUrl,
+    /// remote fetches reliably, so decode the file directly.
+    private static func artwork(atFileURL url: URL?) -> INImage? {
+        guard let url = url,
               url.isFileURL,
               let image = UIImage(contentsOfFile: url.path) else { return nil }
+        return inImage(from: image)
+    }
 
+    /// Covers can be multi-MB, and INImage payloads cross XPC to the Siri UI -- downscale
+    /// to thumbnail size first.
+    private static func inImage(from image: UIImage) -> INImage? {
         let maxSide: CGFloat = 256
         let largestSide = max(image.size.width, image.size.height)
         guard largestSide > 0 else { return nil }

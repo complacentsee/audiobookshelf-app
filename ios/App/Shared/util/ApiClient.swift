@@ -645,8 +645,74 @@ class ApiClient {
     // MediaManager uses. Response types live in CarPlay/CarPlayAPIModels.swift.
 
     public static func getLibraries(callback: @escaping ([CarPlayLibrary]) -> Void) {
-        getResourceWithTokenRefresh(endpoint: "api/libraries", decodable: LibrariesResponse.self) { response in
+        // include=stats: totalItems feeds Siri's INMediaUserContext; CarPlay ignores it.
+        getResourceWithTokenRefresh(endpoint: "api/libraries?include=stats", decodable: LibrariesResponse.self) { response in
             callback(response?.libraries ?? [])
+        }
+    }
+
+    public static func searchLibrary(libraryId: String, query: String, limit: Int = 6, callback: @escaping (SearchResponse?) -> Void) {
+        // The query is spoken text -- percent-encode it or spaces/apostrophes produce an
+        // invalid URL and the request never leaves the device.
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "limit", value: String(limit))]
+        guard let encoded = components.percentEncodedQuery else {
+            callback(nil)
+            return
+        }
+        // URLComponents leaves literal '+' unencoded (legal per RFC 3986), but the server's
+        // Express query parser decodes '+' as a space. Every '+' at this point is a literal
+        // from the title (spaces are already %20), so escape them.
+        let queryString = encoded.replacingOccurrences(of: "+", with: "%2B")
+        getResourceWithTokenRefresh(endpoint: "api/libraries/\(libraryId)/search?\(queryString)", decodable: SearchResponse.self) { response in
+            callback(response)
+        }
+    }
+
+    /// Searches every book library for every query variant (the server matches each field
+    /// by substring, so a combined "<title> by <author>" phrase needs its title-only
+    /// variant sent separately) and merges the book results, deduped by library item id.
+    /// Owns its own deadline: Alamofire's 60s default would blow a Siri budget, so the
+    /// callback fires exactly once on the main queue with whatever arrived by `timeout` --
+    /// offline or logged out it degrades to an empty list almost immediately.
+    public static func searchAllLibraries(queries: [String], timeout: TimeInterval, callback: @escaping ([LibraryItemResult]) -> Void) {
+        var merged: [LibraryItemResult] = []
+        var completed = false
+        // Everything below runs on the main queue (Alamofire callbacks, group.notify, the
+        // deadline), so plain captured vars are race-free.
+        let finish = {
+            guard !completed else { return }
+            completed = true
+            var seen = Set<String>()
+            callback(merged.filter { seen.insert($0.id).inserted })
+        }
+        let deadline = DispatchWorkItem {
+            AbsLogger.info(message: "searchAllLibraries: deadline (\(timeout)s) hit for '\(queries.first ?? "")' with \(merged.count) results so far")
+            finish()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: deadline)
+
+        getLibraries { libraries in
+            let bookLibraries = libraries.filter { $0.mediaType != "podcast" }
+            guard !bookLibraries.isEmpty, !queries.isEmpty, !completed else {
+                deadline.cancel()
+                finish()
+                return
+            }
+            let group = DispatchGroup()
+            for library in bookLibraries {
+                for query in queries {
+                    group.enter()
+                    searchLibrary(libraryId: library.id, query: query) { response in
+                        merged.append(contentsOf: (response?.book ?? []).compactMap { $0.libraryItem })
+                        group.leave()
+                    }
+                }
+            }
+            group.notify(queue: .main) {
+                deadline.cancel()
+                finish()
+            }
         }
     }
 
