@@ -89,6 +89,12 @@ class PlaybackLauncher {
         }
 
         let episode = localItem.getPodcastEpisode(episodeId: episodeId)
+        // A requested episode that is no longer downloaded must fail here: falling through
+        // builds a whole-item session, and podcast items have no item-level tracks.
+        if episodeId != nil, episode == nil {
+            AbsLogger.error(message: "PlaybackLauncher: episode \(episodeId!) not found on \(localLibraryItemId)")
+            return false
+        }
         let playbackSession = localItem.getPlaybackSession(episode: episode)
 
         do {
@@ -101,6 +107,22 @@ class PlaybackLauncher {
             AbsLogger.error(message: "PlaybackLauncher: Failed to save local playback session: \(error)")
             return false
         }
+    }
+
+    /// A single podcast episode is playable when its own audio file exists on disk as a
+    /// regular file. Whole-item isPlayable would be wrong here: a podcast item fails that
+    /// check as soon as ANY downloaded episode is hollowed out, which must not block the
+    /// intact episodes.
+    static func isEpisodePlayable(_ item: LocalLibraryItem, episodeId: String) -> Bool {
+        guard let episode = item.getPodcastEpisode(episodeId: episodeId),
+              let localFile = episode.audioTrack?.getLocalFile() else { return false }
+        var isDirectory: ObjCBool = false
+        let path = localFile.contentPath.path
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue else {
+            AbsLogger.error(message: "PlaybackLauncher: episode '\(episode.title)' of '\(item.media?.metadata?.title ?? item.id)' has missing/invalid audio file: \(localFile.filename ?? path)")
+            return false
+        }
+        return true
     }
 
     /// A local item is only playable if its audio files actually exist on disk as regular files.

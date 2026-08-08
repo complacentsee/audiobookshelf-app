@@ -116,18 +116,21 @@ public class AbsAudioPlayer: CAPPlugin, CAPBridgedPlugin {
     /// donate them too.
     private func donateSiriPlayInteraction(for session: PlaybackSession) {
         guard #available(iOS 14.0, *) else { return }
-        // Books only until podcast episodes get Siri routing (phase 3).
-        guard session.episodeId == nil else { return }
         // Local id when downloaded so the Siri handle path replays offline; matches the
-        // identifier convention in SiriPlayMediaHandler.
-        guard let identifier = session.localLibraryItem?.id ?? session.libraryItemId else { return }
+        // identifier convention in SiriPlayMediaHandler (episodes ride the same id as
+        // "<itemId>::<episodeId>").
+        guard let itemPart = session.localLibraryItem?.id ?? session.libraryItemId else { return }
+        let isEpisode = session.episodeId != nil
+        let identifier = isEpisode ? itemPart + SiriPlayMediaHandler.episodeIdSeparator + session.episodeId! : itemPart
 
         let mediaItem = INMediaItem(
             identifier: identifier,
             title: session.displayTitle,
-            type: .audioBook,
+            type: isEpisode ? .podcastEpisode : .audioBook,
             artwork: nil,
-            artist: session.displayAuthor
+            // Episodes render show-first in Siri UI; the show name lives in the session's
+            // media metadata, with the podcast author as a fallback.
+            artist: isEpisode ? (session.mediaMetadata?.title ?? session.displayAuthor) : session.displayAuthor
         )
         let intent = INPlayMediaIntent(
             mediaItems: [mediaItem],
@@ -140,8 +143,9 @@ public class AbsAudioPlayer: CAPPlugin, CAPBridgedPlugin {
             mediaSearch: nil
         )
         let interaction = INInteraction(intent: intent, response: INPlayMediaIntentResponse(code: .success, userActivity: nil))
-        // Grouped per item so INInteraction.delete(with:) can clear a finished book later.
-        interaction.groupIdentifier = identifier
+        // Grouped per library item (not per episode) so INInteraction.delete(with:) can
+        // clear a finished book or a whole show later.
+        interaction.groupIdentifier = itemPart
         interaction.donate { error in
             if let error = error {
                 AbsLogger.error(message: "Failed to donate Siri play interaction: \(error)")

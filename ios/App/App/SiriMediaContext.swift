@@ -19,6 +19,12 @@ class SiriMediaContext {
     /// vocabulary. Read by SiriPlayMediaHandler on the main queue during ranking.
     private(set) static var inProgressLibraryItemIds: Set<String> = []
 
+    /// Most recent in-progress episode per podcast library item id. Fallback for
+    /// SiriPlayMediaHandler's episode pick when its fresh items-in-progress fetch misses
+    /// the deadline: up to an hour stale, but losing the user's spot to the newest
+    /// episode would be worse. Main queue only, like the rest of the state.
+    private(set) static var inProgressRecentEpisodes: [String: (episodeId: String, title: String?)] = [:]
+
     /// INVocabulary is replace-per-type and silently truncates; keep lists modest.
     private static let vocabularyCap = 100
     private static let upcomingSuggestionsCap = 10
@@ -63,23 +69,23 @@ class SiriMediaContext {
         let generation = refreshGeneration
 
         guard Store.serverConfig != nil else {
-            // Logged out: withdraw everything server-derived. Downloaded books remain
+            // Logged out: withdraw everything server-derived. Downloaded items remain
             // playable through the resolve path, but suggesting vocabulary for an account
             // that is gone would leave stale titles in Siri's recognizer.
             inProgressLibraryItemIds = []
+            inProgressRecentEpisodes = [:]
             INVocabulary.shared().removeAllVocabularyStrings()
             INUpcomingMediaManager.shared.setSuggestedMediaIntents(NSOrderedSet())
-            updateUserContext(numberOfLibraryItems: downloadedBooks().count)
+            updateUserContext(numberOfLibraryItems: downloadedItems().count)
             AbsLogger.info(message: "SiriMediaContext: no server config, cleared Siri context")
             return
         }
 
         ApiClient.getLibraries { libraries in
             guard generation == refreshGeneration else { return }
-            let bookLibraries = libraries.filter { $0.mediaType != "podcast" }
-            let statsTotal = bookLibraries.compactMap { $0.stats?.totalItems }.reduce(0, +)
-            updateUserContext(numberOfLibraryItems: statsTotal > 0 ? statsTotal : downloadedBooks().count)
-            refreshVocabularyAndSuggestions(bookLibraries: bookLibraries, generation: generation)
+            let statsTotal = libraries.compactMap { $0.stats?.totalItems }.reduce(0, +)
+            updateUserContext(numberOfLibraryItems: statsTotal > 0 ? statsTotal : downloadedItems().count)
+            refreshVocabularyAndSuggestions(libraries: libraries, generation: generation)
         }
     }
 
@@ -95,56 +101,82 @@ class SiriMediaContext {
 
     // MARK: - Vocabulary + suggestions
 
-    private static func refreshVocabularyAndSuggestions(bookLibraries: [CarPlayLibrary], generation: Int) {
+    private static func refreshVocabularyAndSuggestions(libraries: [CarPlayLibrary], generation: Int) {
         ApiClient.getItemsInProgress { itemsInProgress in
             guard generation == refreshGeneration else { return }
-            let inProgressBooks = (itemsInProgress ?? []).filter { ($0.mediaType ?? "book") == "book" }
-            inProgressLibraryItemIds = Set(inProgressBooks.map { $0.id })
-            updateUpcomingSuggestions(inProgressBooks)
+            let inProgress = itemsInProgress ?? []
+            inProgressLibraryItemIds = Set(inProgress.map { $0.id })
 
-            let downloaded = downloadedBooks()
+            // First entry per item wins: the server orders items-in-progress most recent
+            // first, and one show can appear once per in-progress episode.
+            var recentEpisodes: [String: (episodeId: String, title: String?)] = [:]
+            for item in inProgress where (item.mediaType ?? "book") == "podcast" {
+                guard let episodeId = item.episodeId, recentEpisodes[item.id] == nil else { continue }
+                recentEpisodes[item.id] = (episodeId, item.episodeTitle)
+            }
+            inProgressRecentEpisodes = recentEpisodes
+            updateUpcomingSuggestions(inProgress)
+
+            let inProgressBooks = inProgress.filter { ($0.mediaType ?? "book") == "book" }
+            let inProgressShows = inProgress.filter { ($0.mediaType ?? "book") == "podcast" }
+            let downloaded = downloadedItems()
+            let downloadedBooks = downloaded.filter { $0.isBook }
 
             // Importance-descending, the order INVocabulary weighs them: what the user is
             // midway through, then what they chose to download, then library breadth.
+            // Podcast SHOW titles only -- episode titles churn too fast for the 100-string
+            // cap and shows are what people say to Siri.
             let priorityTitles = [
                 inProgressBooks.compactMap { $0.title },
-                downloaded.compactMap { $0.media?.metadata?.title }
+                downloadedBooks.compactMap { $0.media?.metadata?.title }
             ]
             let priorityAuthors = [
                 inProgressBooks.compactMap { $0.authorName },
-                downloaded.compactMap { $0.media?.metadata?.authorDisplayName }
+                downloadedBooks.compactMap { $0.media?.metadata?.authorDisplayName }
+            ]
+            let priorityShowTitles = [
+                inProgressShows.compactMap { $0.title },
+                downloaded.filter { $0.isPodcast }.compactMap { $0.media?.metadata?.title }
             ]
 
-            guard !bookLibraries.isEmpty else {
-                setVocabulary(titleGroups: priorityTitles, authorGroups: priorityAuthors)
+            guard !libraries.isEmpty else {
+                setVocabulary(titleGroups: priorityTitles, authorGroups: priorityAuthors, showTitleGroups: priorityShowTitles)
                 return
             }
 
             let group = DispatchGroup()
-            var libraryTitles = Array(repeating: [String](), count: bookLibraries.count)
-            var libraryAuthors = Array(repeating: [String](), count: bookLibraries.count)
-            for (index, library) in bookLibraries.enumerated() {
+            var libraryTitles = Array(repeating: [String](), count: libraries.count)
+            var libraryAuthors = Array(repeating: [String](), count: libraries.count)
+            var libraryShowTitles = Array(repeating: [String](), count: libraries.count)
+            for (index, library) in libraries.enumerated() {
                 group.enter()
                 ApiClient.getLibraryItems(libraryId: library.id, limit: libraryPageSize, page: 0) { response in
                     let results = response?.results ?? []
-                    libraryTitles[index] = results.compactMap { $0.title }
-                    libraryAuthors[index] = results.compactMap { $0.authorName }
+                    if library.mediaType == "podcast" {
+                        libraryShowTitles[index] = results.compactMap { $0.title }
+                    } else {
+                        libraryTitles[index] = results.compactMap { $0.title }
+                        libraryAuthors[index] = results.compactMap { $0.authorName }
+                    }
                     group.leave()
                 }
             }
             group.notify(queue: .main) {
                 guard generation == refreshGeneration else { return }
-                setVocabulary(titleGroups: priorityTitles + libraryTitles, authorGroups: priorityAuthors + libraryAuthors)
+                setVocabulary(titleGroups: priorityTitles + libraryTitles,
+                              authorGroups: priorityAuthors + libraryAuthors,
+                              showTitleGroups: priorityShowTitles + libraryShowTitles)
             }
         }
     }
 
-    private static func setVocabulary(titleGroups: [[String]], authorGroups: [[String]]) {
+    private static func setVocabulary(titleGroups: [[String]], authorGroups: [[String]], showTitleGroups: [[String]]) {
         let titles = orderedDedupe(titleGroups)
         let authors = orderedDedupe(authorGroups)
+        let showTitles = orderedDedupe(showTitleGroups)
         let vocabulary = INVocabulary.shared()
 
-        guard !titles.isEmpty || !authors.isEmpty else {
+        guard !titles.isEmpty || !authors.isEmpty || !showTitles.isEmpty else {
             vocabulary.removeAllVocabularyStrings()
             return
         }
@@ -156,7 +188,10 @@ class SiriMediaContext {
         if !authors.isEmpty {
             vocabulary.setVocabularyStrings(NSOrderedSet(array: authors), of: .mediaAudiobookAuthorName)
         }
-        AbsLogger.info(message: "SiriMediaContext: vocabulary set (\(titles.count) titles, \(authors.count) authors)")
+        if !showTitles.isEmpty {
+            vocabulary.setVocabularyStrings(NSOrderedSet(array: showTitles), of: .mediaShowTitle)
+        }
+        AbsLogger.info(message: "SiriMediaContext: vocabulary set (\(titles.count) titles, \(authors.count) authors, \(showTitles.count) shows)")
     }
 
     /// First occurrence wins, so callers pass groups most-important first (INVocabulary
@@ -181,17 +216,33 @@ class SiriMediaContext {
 
     // MARK: - INUpcomingMediaManager
 
-    private static func updateUpcomingSuggestions(_ inProgressBooks: [ItemInProgress]) {
+    private static func updateUpcomingSuggestions(_ inProgressItems: [ItemInProgress]) {
         INUpcomingMediaManager.shared.setPredictionMode(.default, for: .audioBook)
+        INUpcomingMediaManager.shared.setPredictionMode(.default, for: .podcastEpisode)
 
-        let intents = inProgressBooks.prefix(upcomingSuggestionsCap).map { item -> INPlayMediaIntent in
-            let mediaItem = INMediaItem(
-                identifier: item.id,
-                title: item.displayTitle,
-                type: .audioBook,
-                artwork: nil,
-                artist: item.authorName
-            )
+        let intents = inProgressItems.prefix(upcomingSuggestionsCap).compactMap { item -> INPlayMediaIntent? in
+            let isPodcast = (item.mediaType ?? "book") == "podcast"
+            let mediaItem: INMediaItem
+            if isPodcast {
+                // Composite id so handle() resumes the exact episode; a podcast entry
+                // without its in-progress episode cannot be routed, so skip it.
+                guard let episodeId = item.episodeId else { return nil }
+                mediaItem = INMediaItem(
+                    identifier: item.id + SiriPlayMediaHandler.episodeIdSeparator + episodeId,
+                    title: item.displayTitle,
+                    type: .podcastEpisode,
+                    artwork: nil,
+                    artist: item.title
+                )
+            } else {
+                mediaItem = INMediaItem(
+                    identifier: item.id,
+                    title: item.displayTitle,
+                    type: .audioBook,
+                    artwork: nil,
+                    artist: item.authorName
+                )
+            }
             return INPlayMediaIntent(
                 mediaItems: [mediaItem],
                 mediaContainer: nil,
@@ -208,7 +259,7 @@ class SiriMediaContext {
 
     // MARK: - Helpers
 
-    private static func downloadedBooks() -> [LocalLibraryItem] {
-        return Database.shared.getLocalLibraryItems().filter { $0.isBook }
+    private static func downloadedItems() -> [LocalLibraryItem] {
+        return Database.shared.getLocalLibraryItems()
     }
 }

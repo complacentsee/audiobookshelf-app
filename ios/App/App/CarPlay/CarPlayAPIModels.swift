@@ -43,9 +43,12 @@ struct LibraryItemResult: Decodable {
     let id: String
     let mediaType: String?
     let media: LibraryItemMedia?
+    /// Episode-title search hits arrive as the podcast libraryItem with the matched
+    /// episode spliced on under this key (same shape items-in-progress uses).
+    let recentEpisode: ItemRecentEpisode?
 
     var title: String? { media?.metadata?.title }
-    var authorName: String? { media?.metadata?.authorName }
+    var authorName: String? { media?.metadata?.authorName ?? media?.metadata?.author }
 }
 
 struct LibraryItemMedia: Decodable {
@@ -55,15 +58,22 @@ struct LibraryItemMedia: Decodable {
 struct LibraryItemMetadata: Decodable {
     let title: String?
     let authorName: String?
+    /// Podcast metadata carries the author under "author"; books use "authorName".
+    let author: String?
 }
 
 // MARK: - Search
 
-/// api/libraries/{id}/search response. The server also returns series/authors arrays and
-/// per-result matchKey/matchText; every existing client ignores those, and so does Siri.
-/// Podcast results are skipped until episodes get Siri routing (phase 3).
+/// api/libraries/{id}/search response. Book libraries answer under "book" (plus
+/// series/authors/narrators arrays every client ignores); podcast libraries answer under
+/// "podcast" (show title/author matches) and "episodes" (episode-title matches, each
+/// libraryItem carrying the matched episode as recentEpisode). Search-result libraryItems
+/// never embed a real episodes array -- the server empties it -- so episode listings
+/// always require the expanded item fetch.
 struct SearchResponse: Decodable {
     let book: [SearchResultEntry]?
+    let podcast: [SearchResultEntry]?
+    let episodes: [SearchResultEntry]?
 }
 
 struct SearchResultEntry: Decodable {

@@ -21,8 +21,11 @@ class PodcastEpisode: EmbeddedObject, Codable {
     @Persisted var chapters = List<Chapter>()
     @Persisted var duration: Double?
     @Persisted var size: Int?
+    /// Epoch ms from the podcast feed, used to order server episode lists. Deliberately not
+    /// @Persisted, which would change the Realm schema; nil on downloaded episodes.
+    var publishedAt: Double?
     var serverEpisodeId: String { self.id }
-    
+
     private enum CodingKeys : String, CodingKey {
         case id,
              index,
@@ -36,6 +39,7 @@ class PodcastEpisode: EmbeddedObject, Codable {
              chapters,
              duration,
              size,
+             publishedAt,
              serverEpisodeId
     }
     
@@ -58,6 +62,7 @@ class PodcastEpisode: EmbeddedObject, Codable {
         }
         duration = try? values.decode(Double.self, forKey: .duration)
         size = try? values.decode(Int.self, forKey: .size)
+        publishedAt = try? values.decode(Double.self, forKey: .publishedAt)
     }
     
     func encode(to encoder: Encoder) throws {

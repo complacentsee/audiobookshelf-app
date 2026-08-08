@@ -669,9 +669,12 @@ class ApiClient {
         }
     }
 
-    /// Searches every book library for every query variant (the server matches each field
+    /// Searches every library for every query variant (the server matches each field
     /// by substring, so a combined "<title> by <author>" phrase needs its title-only
-    /// variant sent separately) and merges the book results, deduped by library item id.
+    /// variant sent separately) and merges book, podcast-show, and episode-title results.
+    /// Deduped by library item id + matched episode id: the same show can legitimately
+    /// appear both as a show-title match and as an episode-title match, and those are
+    /// different playback targets.
     /// Owns its own deadline: Alamofire's 60s default would blow a Siri budget, so the
     /// callback fires exactly once on the main queue with whatever arrived by `timeout` --
     /// offline or logged out it degrades to an empty list almost immediately.
@@ -684,7 +687,7 @@ class ApiClient {
             guard !completed else { return }
             completed = true
             var seen = Set<String>()
-            callback(merged.filter { seen.insert($0.id).inserted })
+            callback(merged.filter { seen.insert("\($0.id)|\($0.recentEpisode?.id ?? "")").inserted })
         }
         let deadline = DispatchWorkItem {
             AbsLogger.info(message: "searchAllLibraries: deadline (\(timeout)s) hit for '\(queries.first ?? "")' with \(merged.count) results so far")
@@ -693,18 +696,19 @@ class ApiClient {
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: deadline)
 
         getLibraries { libraries in
-            let bookLibraries = libraries.filter { $0.mediaType != "podcast" }
-            guard !bookLibraries.isEmpty, !queries.isEmpty, !completed else {
+            guard !libraries.isEmpty, !queries.isEmpty, !completed else {
                 deadline.cancel()
                 finish()
                 return
             }
             let group = DispatchGroup()
-            for library in bookLibraries {
+            for library in libraries {
                 for query in queries {
                     group.enter()
                     searchLibrary(libraryId: library.id, query: query) { response in
                         merged.append(contentsOf: (response?.book ?? []).compactMap { $0.libraryItem })
+                        merged.append(contentsOf: (response?.podcast ?? []).compactMap { $0.libraryItem })
+                        merged.append(contentsOf: (response?.episodes ?? []).compactMap { $0.libraryItem })
                         group.leave()
                     }
                 }

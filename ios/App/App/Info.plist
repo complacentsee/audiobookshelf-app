@@ -72,6 +72,7 @@
 	<key>INSupportedMediaCategories</key>
 	<array>
 		<string>INMediaCategoryAudiobooks</string>
+		<string>INMediaCategoryPodcasts</string>
 	</array>
 	<!-- Siri speech recognition rarely produces "Audiobookshelf" as one word; without these
 	     variants the request routes to Apple Music / TuneIn instead of this app. -->
