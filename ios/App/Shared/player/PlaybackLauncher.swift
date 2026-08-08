@@ -20,11 +20,16 @@ class PlaybackLauncher {
     static func playServerItem(libraryItemId: String, episodeId: String? = nil, completion: ((Bool) -> Void)? = nil) {
         AbsLogger.info(message: "playServerItem called for \(libraryItemId)")
 
-        // If this item is already playing, just navigate to Now Playing
+        // If this item is already loaded, unpause if needed and navigate to Now Playing.
+        // "Play X" / "continue playing" on the current-but-paused session must resume it,
+        // not silently report success.
         if let currentSession = PlayerHandler.getPlaybackSession(),
            currentSession.libraryItemId == libraryItemId,
            (episodeId == nil || currentSession.episodeId == episodeId) {
-            AbsLogger.info(message: "Item already playing, pushing Now Playing")
+            AbsLogger.info(message: "Item already loaded (paused=\(PlayerHandler.paused)), resuming + pushing Now Playing")
+            if PlayerHandler.paused {
+                PlayerHandler.paused = false
+            }
             CarPlaySceneDelegate.shared?.pushNowPlaying()
             completion?(true)
             return
@@ -64,10 +69,14 @@ class PlaybackLauncher {
     /// with a user-facing contract (Siri's .success/.failure response) can report honestly.
     @discardableResult
     static func playLocalItem(localLibraryItemId: String, episodeId: String? = nil) -> Bool {
-        // If this item is already playing, just navigate to Now Playing
+        // If this item is already loaded, unpause if needed and navigate to Now Playing
+        // (see playServerItem).
         if let currentSession = PlayerHandler.getPlaybackSession(),
            currentSession.localLibraryItem?.id == localLibraryItemId,
            (episodeId == nil || currentSession.episodeId == episodeId) {
+            if PlayerHandler.paused {
+                PlayerHandler.paused = false
+            }
             CarPlaySceneDelegate.shared?.pushNowPlaying()
             return true
         }

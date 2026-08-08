@@ -55,11 +55,13 @@ class SiriPlayMediaHandler: NSObject, INPlayMediaIntentHandling {
 
     func resolveMediaItems(for intent: INPlayMediaIntent, with completion: @escaping ([INPlayMediaMediaItemResolutionResult]) -> Void) {
         // mediaName can arrive nil or mangled -- Siri strips words it thinks are structural
-        // ("playlist", "album") and sometimes drops the phrase entirely.
+        // ("playlist", "album") and sometimes drops the phrase entirely. A no-title request
+        // ("continue playing / resume my book / play Audiobookshelf") is a resume: pick up
+        // the most recently played book instead of failing.
         guard let query = intent.mediaSearch?.mediaName?.trimmingCharacters(in: .whitespacesAndNewlines),
               !query.isEmpty else {
-            AbsLogger.error(message: "Siri: no usable mediaName (mediaSearch=\(String(describing: intent.mediaSearch)))")
-            completion([INPlayMediaMediaItemResolutionResult.unsupported()])
+            AbsLogger.info(message: "Siri: no mediaName (resumePlayback=\(String(describing: intent.resumePlayback))), resolving continue-listening")
+            Self.resolveContinueListening(completion: completion)
             return
         }
         let artistName = intent.mediaSearch?.artistName
@@ -314,6 +316,80 @@ class SiriPlayMediaHandler: NSObject, INPlayMediaIntentHandling {
         return Set(Database.shared.getAllLocalMediaProgress()
             .filter { $0.progress > 0 && !$0.isFinished }
             .map { $0.localLibraryItemId })
+    }
+
+    // MARK: - Continue listening
+
+    /// "Continue playing on Audiobookshelf" with no title. Priority: the current (possibly
+    /// paused) session, then the most recently played unfinished downloaded book, then the
+    /// server's items-in-progress (already ordered most-recent first). Books only until
+    /// phase 3. handle() unpauses a current session via the already-playing short-circuit.
+    private static func resolveContinueListening(completion: @escaping ([INPlayMediaMediaItemResolutionResult]) -> Void) {
+        DispatchQueue.main.async {
+            // 1. The session already loaded in the player, even if paused.
+            if let session = PlayerHandler.getPlaybackSession(), session.episodeId == nil,
+               let id = session.localLibraryItem?.id ?? session.libraryItemId {
+                AbsLogger.info(message: "Siri: continue-listening resolved current session '\(session.displayTitle ?? "?")' (\(id))")
+                let item = INMediaItem(
+                    identifier: id,
+                    title: session.displayTitle,
+                    type: .audioBook,
+                    artwork: artwork(atFileURL: session.localLibraryItem?.coverUrl),
+                    artist: cleanAuthor(session.displayAuthor)
+                )
+                completion(INPlayMediaMediaItemResolutionResult.successes(with: [item]))
+                return
+            }
+
+            // 2. Most recently played unfinished downloaded book -- instant and offline-safe.
+            let recentLocal = Database.shared.getAllLocalMediaProgress()
+                .filter { $0.progress > 0 && !$0.isFinished && $0.localEpisodeId == nil }
+                .sorted { $0.lastUpdate > $1.lastUpdate }
+            for progress in recentLocal {
+                guard let item = Database.shared.getLocalLibraryItem(localLibraryItemId: progress.localLibraryItemId),
+                      item.isBook, PlaybackLauncher.isPlayable(item) else { continue }
+                AbsLogger.info(message: "Siri: continue-listening resolved local '\(item.media?.metadata?.title ?? "?")' (\(item.id))")
+                let mediaItem = INMediaItem(
+                    identifier: item.id,
+                    title: item.media?.metadata?.title,
+                    type: .audioBook,
+                    artwork: artwork(atFileURL: item.coverUrl),
+                    artist: cleanAuthor(item.media?.metadata?.authorDisplayName)
+                )
+                completion(INPlayMediaMediaItemResolutionResult.successes(with: [mediaItem]))
+                return
+            }
+
+            // 3. Server items-in-progress, under the usual Siri-owned deadline.
+            var fired = false
+            let fire: ([INPlayMediaMediaItemResolutionResult]) -> Void = { results in
+                guard !fired else { return }
+                fired = true
+                completion(results)
+            }
+            let deadline = DispatchWorkItem {
+                AbsLogger.error(message: "Siri: continue-listening server fetch exceeded \(serverSearchTimeout)s")
+                fire([INPlayMediaMediaItemResolutionResult.unsupported()])
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + serverSearchTimeout, execute: deadline)
+            ApiClient.getItemsInProgress { items in
+                deadline.cancel()
+                guard let first = (items ?? []).first(where: { ($0.mediaType ?? "book") == "book" }) else {
+                    AbsLogger.error(message: "Siri: continue-listening found nothing in progress")
+                    fire([INPlayMediaMediaItemResolutionResult.unsupported()])
+                    return
+                }
+                AbsLogger.info(message: "Siri: continue-listening resolved server '\(first.displayTitle)' (\(first.id))")
+                let mediaItem = INMediaItem(
+                    identifier: first.id,
+                    title: first.displayTitle,
+                    type: .audioBook,
+                    artwork: nil,
+                    artist: cleanAuthor(first.authorName)
+                )
+                fire(INPlayMediaMediaItemResolutionResult.successes(with: [mediaItem]))
+            }
+        }
     }
 
     // MARK: - Resolution results
