@@ -79,6 +79,8 @@
 		EACB38162BCCA1500060DA4A /* DefaultedAudioPlayerRateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EACB38152BCCA1500060DA4A /* DefaultedAudioPlayerRateManager.swift */; };
 		ECD6E68E63FEF1971B23BEE0 /* SiriPlayMediaHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27C7E27829109E4399073E75 /* SiriPlayMediaHandler.swift */; };
 		F81C083AF90208C0346CF2A7 /* SiriMediaContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB6D5789FE6F84B19819366 /* SiriMediaContext.swift */; };
+		8C2F19B4D7E6035A9B41F0C6 /* SleepTimerIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A7D41C25E9B0A6F14D2C8E1 /* SleepTimerIntents.swift */; };
+		5E9B2C4A7D1F38062B8E4C17 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A2F7C3D18B4E62059C1F7A36 /* Localizable.xcstrings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -95,6 +97,8 @@
 		01FD6F26302645E6006E804E /* AudiobookshelfDebug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AudiobookshelfDebug.entitlements; sourceTree = "<group>"; };
 		1BB6D5789FE6F84B19819366 /* SiriMediaContext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SiriMediaContext.swift; sourceTree = "<group>"; };
 		27C7E27829109E4399073E75 /* SiriPlayMediaHandler.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SiriPlayMediaHandler.swift; sourceTree = "<group>"; };
+		3A7D41C25E9B0A6F14D2C8E1 /* SleepTimerIntents.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SleepTimerIntents.swift; sourceTree = "<group>"; };
+		A2F7C3D18B4E62059C1F7A36 /* Localizable.xcstrings */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		3277E1C60191C80F27EF3476 /* PlaybackLauncher.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PlaybackLauncher.swift; sourceTree = "<group>"; };
 		3A200C1427D64D7E00CBF02E /* AudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayer.swift; sourceTree = "<group>"; };
@@ -321,6 +325,8 @@
 				8E6E7DCD4B1ECCB73DBBBEF3 /* CarPlay */,
 				27C7E27829109E4399073E75 /* SiriPlayMediaHandler.swift */,
 				1BB6D5789FE6F84B19819366 /* SiriMediaContext.swift */,
+				3A7D41C25E9B0A6F14D2C8E1 /* SleepTimerIntents.swift */,
+				A2F7C3D18B4E62059C1F7A36 /* Localizable.xcstrings */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -508,6 +514,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */,
+				5E9B2C4A7D1F38062B8E4C17 /* Localizable.xcstrings in Resources */,
 				50B271D11FEDC1A000F3C39B /* public in Resources */,
 				504EC30F1FED79650016851F /* Assets.xcassets in Resources */,
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
@@ -634,6 +641,7 @@
 				D4A9C479CAF3ED87B3AFABB8 /* PlaybackLauncher.swift in Sources */,
 				ECD6E68E63FEF1971B23BEE0 /* SiriPlayMediaHandler.swift in Sources */,
 				F81C083AF90208C0346CF2A7 /* SiriMediaContext.swift in Sources */,
+				8C2F19B4D7E6035A9B41F0C6 /* SleepTimerIntents.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

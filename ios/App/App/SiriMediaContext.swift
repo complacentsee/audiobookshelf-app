@@ -47,6 +47,14 @@ class SiriMediaContext {
     /// first refresh.
     static func initialize() {
         guard serverConfigObserver == nil else { return }
+
+        // The sleep-timer voice intents need their notification observers alive before
+        // the first timer is armed, however it is armed, or "reset the sleep timer"
+        // cannot know the original ask (SleepTimerIntents.swift).
+        if #available(iOS 17.0, *) {
+            SleepTimerVoiceState.activate()
+        }
+
         serverConfigObserver = NotificationCenter.default.addObserver(forName: Store.serverConfigDidChange, object: nil, queue: .main) { _ in
             refresh()
         }

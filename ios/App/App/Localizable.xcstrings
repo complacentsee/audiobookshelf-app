@@ -1,0 +1,132 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Check Sleep Timer" : {
+      "extractionState" : "manual"
+    },
+    "Set Sleep Timer" : {
+      "extractionState" : "manual"
+    },
+    "Cancel Sleep Timer" : {
+      "extractionState" : "manual"
+    },
+    "Reset Sleep Timer" : {
+      "extractionState" : "manual"
+    },
+    "Says how much time is left on the sleep timer." : {
+      "extractionState" : "manual"
+    },
+    "Starts a sleep timer for the current audiobook or podcast." : {
+      "extractionState" : "manual"
+    },
+    "Turns off the running sleep timer." : {
+      "extractionState" : "manual"
+    },
+    "Restarts the sleep timer with its original duration." : {
+      "extractionState" : "manual"
+    },
+    "Duration" : {
+      "extractionState" : "manual"
+    },
+    "For how long?" : {
+      "extractionState" : "manual"
+    },
+    "Set a sleep timer for ${duration}" : {
+      "extractionState" : "manual"
+    },
+    "Sleep Timer Duration" : {
+      "extractionState" : "manual"
+    },
+    "5 minutes" : {
+      "extractionState" : "manual"
+    },
+    "10 minutes" : {
+      "extractionState" : "manual"
+    },
+    "15 minutes" : {
+      "extractionState" : "manual"
+    },
+    "30 minutes" : {
+      "extractionState" : "manual"
+    },
+    "45 minutes" : {
+      "extractionState" : "manual"
+    },
+    "1 hour" : {
+      "extractionState" : "manual"
+    },
+    "End of chapter" : {
+      "extractionState" : "manual"
+    },
+    "an hour" : {
+      "extractionState" : "manual"
+    },
+    "one hour" : {
+      "extractionState" : "manual"
+    },
+    "60 minutes" : {
+      "extractionState" : "manual"
+    },
+    "the end of the chapter" : {
+      "extractionState" : "manual"
+    },
+    "the end of this chapter" : {
+      "extractionState" : "manual"
+    },
+    "this chapter ends" : {
+      "extractionState" : "manual"
+    },
+    "No sleep timer is running." : {
+      "extractionState" : "manual"
+    },
+    "Less than a minute is left on the sleep timer." : {
+      "extractionState" : "manual"
+    },
+    "About 1 minute is left on the sleep timer." : {
+      "extractionState" : "manual"
+    },
+    "About %lld minutes are left on the sleep timer." : {
+      "extractionState" : "manual"
+    },
+    "Nothing is playing right now." : {
+      "extractionState" : "manual"
+    },
+    "Sleep timer set to the end of the current chapter." : {
+      "extractionState" : "manual"
+    },
+    "This title doesn't have chapter markers. Try a timed sleep timer instead." : {
+      "extractionState" : "manual"
+    },
+    "I couldn't set a chapter sleep timer here. Try a timed sleep timer instead." : {
+      "extractionState" : "manual"
+    },
+    "I couldn't set the sleep timer." : {
+      "extractionState" : "manual"
+    },
+    "Sleep timer set for %@." : {
+      "extractionState" : "manual"
+    },
+    "There's no sleep timer running." : {
+      "extractionState" : "manual"
+    },
+    "Sleep timer off." : {
+      "extractionState" : "manual"
+    },
+    "There's no recent sleep timer to reset." : {
+      "extractionState" : "manual"
+    },
+    "Sleep timer reset to the end of the current chapter." : {
+      "extractionState" : "manual"
+    },
+    "I couldn't reset the chapter sleep timer here." : {
+      "extractionState" : "manual"
+    },
+    "I couldn't reset the sleep timer." : {
+      "extractionState" : "manual"
+    },
+    "Sleep timer reset to %@." : {
+      "extractionState" : "manual"
+    }
+  },
+  "version" : "1.0"
+}
