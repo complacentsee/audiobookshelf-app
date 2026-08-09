@@ -8,6 +8,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     lazy var window: UIWindow? = UIWindow(frame: UIScreen.main.bounds)
     var backgroundCompletionHandler: (() -> Void)?
 
+    // Logging inside the Realm migration block must NOT go through AbsLogger.
+    // AbsLogger writes a LogEntry via Database.shared, and the migration block runs
+    // during Database.shared's own lazy initialization (init -> cleanExpiredLogs ->
+    // first Realm open -> migration). Re-entering that initializer traps with
+    // EXC_BREAKPOINT, and the aborted migration rolls back, so every later launch
+    // crashes identically. AppLogger is os_log only and touches no Realm.
+    private let logger = AppLogger(category: "AppDelegate")
+
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
 
@@ -15,13 +23,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             schemaVersion: 20,
             migrationBlock: { [weak self] migration, oldSchemaVersion in
                 if (oldSchemaVersion < 1) {
-                    AbsLogger.info(message: "Realm schema version was \(oldSchemaVersion)")
+                    self?.logger.log("Realm schema version was \(oldSchemaVersion)")
                     migration.enumerateObjects(ofType: DeviceSettings.className()) { oldObject, newObject in
                         newObject?["enableAltView"] = false
                     }
                 }
                 if (oldSchemaVersion < 4) {
-                    AbsLogger.info(message: "Realm schema version was \(oldSchemaVersion)... Reindexing server configs")
+                    self?.logger.log("Realm schema version was \(oldSchemaVersion)... Reindexing server configs")
                     var indexCounter = 1
                     migration.enumerateObjects(ofType: ServerConnectionConfig.className()) { oldObject, newObject in
                         newObject?["index"] = indexCounter
@@ -29,44 +37,44 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                     }
                 }
                 if (oldSchemaVersion < 5) {
-                    AbsLogger.info(message: "Realm schema version was \(oldSchemaVersion)... Adding lockOrientation setting")
+                    self?.logger.log("Realm schema version was \(oldSchemaVersion)... Adding lockOrientation setting")
                     migration.enumerateObjects(ofType: DeviceSettings.className()) { oldObject, newObject in
                         newObject?["lockOrientation"] = "NONE"
                     }
                 }
                 if (oldSchemaVersion < 6) {
-                    AbsLogger.info(message: "Realm schema version was \(oldSchemaVersion)... Adding hapticFeedback setting")
+                    self?.logger.log("Realm schema version was \(oldSchemaVersion)... Adding hapticFeedback setting")
                     migration.enumerateObjects(ofType: DeviceSettings.className()) { oldObject, newObject in
                         newObject?["hapticFeedback"] = "LIGHT"
                     }
                 }
                 if (oldSchemaVersion < 15) {
-                    AbsLogger.info(message: "Realm schema version was \(oldSchemaVersion)... Adding languageCode setting")
+                    self?.logger.log("Realm schema version was \(oldSchemaVersion)... Adding languageCode setting")
                     migration.enumerateObjects(ofType: DeviceSettings.className()) { oldObject, newObject in
                         newObject?["languageCode"] = "en-us"
                     }
                 }
                 if (oldSchemaVersion < 16) {
-                    AbsLogger.info(message: "Realm schema version was \(oldSchemaVersion)... Adding chapterTrack setting")
+                    self?.logger.log("Realm schema version was \(oldSchemaVersion)... Adding chapterTrack setting")
                     migration.enumerateObjects(ofType: PlayerSettings.className()) { oldObject, newObject in
                         newObject?["chapterTrack"] = false
                     }
                 }
                 if (oldSchemaVersion < 17) {
-                    AbsLogger.info(message: "Realm schema version was \(oldSchemaVersion)... Adding downloadUsingCellular and streamingUsingCellular settings")
+                    self?.logger.log("Realm schema version was \(oldSchemaVersion)... Adding downloadUsingCellular and streamingUsingCellular settings")
                     migration.enumerateObjects(ofType: PlayerSettings.className()) { oldObject, newObject in
                         newObject?["downloadUsingCellular"] = "ALWAYS"
                         newObject?["streamingUsingCellular"] = "ALWAYS"
                     }
                 }
                 if (oldSchemaVersion < 18) {
-                    AbsLogger.info(message: "Realm schema version was \(oldSchemaVersion)... Adding disableSleepTimerFadeOut settings")
+                    self?.logger.log("Realm schema version was \(oldSchemaVersion)... Adding disableSleepTimerFadeOut settings")
                     migration.enumerateObjects(ofType: PlayerSettings.className()) { oldObject, newObject in
                         newObject?["disableSleepTimerFadeOut"] = false
                     }
                 }
                 if (oldSchemaVersion < 20) {
-                    AbsLogger.info(message: "Realm schema version was \(oldSchemaVersion)... Adding version to ServerConnectionConfigs")
+                    self?.logger.log("Realm schema version was \(oldSchemaVersion)... Adding version to ServerConnectionConfigs")
                     migration.enumerateObjects(ofType: ServerConnectionConfig.className()) { oldObject, newObject in
                         newObject?["version"] = ""
                     }
