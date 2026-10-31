@@ -1,6 +1,6 @@
 require_relative '../../node_modules/@capacitor/ios/scripts/pods_helpers'
 
-platform :ios, '14.0'
+platform :ios, '15.0'
 use_frameworks!
 
 # workaround to avoid Xcode caching of Pods that requires
@@ -36,4 +36,17 @@ end
 
 post_install do |installer|
   assertDeploymentTarget(installer)
+
+  # Pods declare their own minimums, which the platform line above does not
+  # override, and Capacitor's helper only enforces 14.0. Unset targets are included:
+  # Realm's xcconfig only maps known Xcode versions, so on newer Xcodes it resolves to
+  # nothing and the pod silently builds for the SDK's version instead.
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      deployment_target = config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f
+      if deployment_target < 15.0
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      end
+    end
+  end
 end
