@@ -119,13 +119,16 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
     func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
-        didDisconnect interfaceController: CPInterfaceController
+        didDisconnectInterfaceController interfaceController: CPInterfaceController
     ) {
         NotificationCenter.default.removeObserver(self)
         pathMonitor?.cancel()
         pathMonitor = nil
         CPNowPlayingTemplate.shared.remove(self)
-        CarPlaySceneDelegate.shared = nil
+        // A new scene may already have connected; don't clear its registration.
+        if CarPlaySceneDelegate.shared === self {
+            CarPlaySceneDelegate.shared = nil
+        }
         self.interfaceController = nil
         self.continueListeningProvider = nil
         self.libraryProvider = nil
